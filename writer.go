@@ -6,12 +6,26 @@ import (
 )
 
 type Writer struct {
-	offset int
-	buf    []byte
-	n      int
-	fd     *os.File
-	err    error
-	q      *FQueue
+	buf []byte
+	n   int
+	fd  *os.File
+	err error
+	*FQueue
+}
+
+func (b *Writer) rolling() error {
+	if _, err := b.fd.Seek(1024, os.SEEK_SET); err != nil {
+		return err
+	}
+
+	b.WriterOffset = 1024
+	return nil
+}
+
+func (b *Writer) setBottom() {
+	if b.WriterOffset >= b.WriterBottom {
+		b.WriterBottom = b.WriterOffset
+	}
 }
 
 func (b *Writer) Flush() error {
@@ -34,8 +48,9 @@ func (b *Writer) Flush() error {
 		b.err = err
 		return err
 	}
-	b.offset += b.n
-	b.q.fspace_free -= b.n
+	b.WriterOffset += b.n
+	b.setBottom()
+	b.Free -= b.n
 	b.n = 0
 	return nil
 }
@@ -43,19 +58,24 @@ func (b *Writer) Flush() error {
 func NewWriter(path string, q *FQueue) (w *Writer, err error) {
 	var fd *os.File
 	fd, err = os.OpenFile(path, os.O_WRONLY, 0644)
+	if _, err = fd.Seek(int64(q.WriterOffset), os.SEEK_SET); err != nil {
+		return
+	}
 	if err != nil {
 		return
 	}
 	w = &Writer{
-		q:   q,
-		fd:  fd,
-		buf: make([]byte, 4096),
+		FQueue: q,
+		fd:     fd,
+		buf:    make([]byte, 4096),
 	}
 	err = nil
 	return
 }
 
-func (b *Writer) Available() int { return len(b.buf) - b.n }
+func (b *Writer) Available() int {
+	return len(b.buf) - b.n
+}
 
 func (b *Writer) Write(bs []byte) (nn int, err error) {
 	for len(bs) > b.Available() && b.err == nil {

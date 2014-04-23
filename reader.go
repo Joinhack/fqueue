@@ -9,12 +9,11 @@ import (
 var errNegativeRead = errors.New("fqueue: reader returned negative count from Read")
 
 type Reader struct {
-	buf    []byte
-	fd     *os.File
-	w, r   int
-	offset int
-	err    error
-	q      *FQueue
+	buf  []byte
+	fd   *os.File
+	w, r int
+	err  error
+	*FQueue
 }
 
 func (b *Reader) readErr() error {
@@ -35,7 +34,7 @@ func (b *Reader) Read(p []byte) (n int, err error) {
 		if len(p) >= len(b.buf) {
 			// Large read, empty buffer.
 			// Read directly into p to avoid copy.
-			n, b.err = b.fd.Read(p)
+			n, b.err = b.fileRead(p)
 			return n, b.readErr()
 		}
 		b.fill()
@@ -52,25 +51,55 @@ func (b *Reader) Read(p []byte) (n int, err error) {
 	return n, nil
 }
 
-func (b *Reader) remain() int {
-	return b.q.Writer.offset - b.q.Reader.offset
-}
-
 func NewReader(path string, q *FQueue) (r *Reader, err error) {
 	var fd *os.File
 	fd, err = os.OpenFile(path, os.O_RDONLY, 0644)
 	if err != nil {
 		return
 	}
+	if _, err = fd.Seek(int64(q.ReaderPtr), os.SEEK_SET); err != nil {
+		return
+	}
+
 	if q == nil {
 		panic("can't be nil")
 	}
 	r = &Reader{
-		q:   q,
-		fd:  fd,
-		buf: make([]byte, 4096),
+		FQueue: q,
+		fd:     fd,
+		buf:    make([]byte, 4096),
 	}
 	err = nil
+	return
+}
+
+func (b *Reader) remain() int {
+	return b.WriterBottom - b.ReaderOffset
+}
+
+func (b *Reader) rolling() (err error) {
+	b.ReaderOffset = 1024
+	_, err = b.fd.Seek(1024, os.SEEK_SET)
+	return
+}
+
+func (b *Reader) fileRead(p []byte) (n int, err error) {
+	remain := b.remain()
+	e := len(p)
+	if remain == 0 {
+		err = io.EOF
+		return
+	}
+
+	if remain < e {
+		e = remain
+	}
+	n, err = b.fd.Read(p[:e])
+	b.ReaderOffset += n
+	b.Free += n
+	if b.ReaderOffset == b.WriterBottom {
+		b.rolling()
+	}
 	return
 }
 
@@ -81,19 +110,10 @@ func (b *Reader) fill() {
 		b.w -= b.r
 		b.r = 0
 	}
-	remain := b.remain()
-	if remain == 0 {
-		b.err = io.EOF
-	}
 	var n int
 	var err error
-	if remain >= len(b.buf)-b.w {
-		n, err = b.fd.Read(b.buf[b.w:])
-	} else {
-		n, err = b.fd.Read(b.buf[b.w:remain])
-	}
+	n, err = b.fileRead(b.buf[b.w:])
 	// Read new data.
-	b.q.fspace_free += n
 	if n < 0 {
 		panic(errNegativeRead)
 	}
