@@ -34,7 +34,7 @@ func (b *Reader) Read(p []byte) (n int, err error) {
 		if len(p) >= len(b.buf) {
 			// Large read, empty buffer.
 			// Read directly into p to avoid copy.
-			n, b.err = b.fileRead(p)
+			n, b.err = b.fdread(p)
 			return n, b.readErr()
 		}
 		b.fill()
@@ -57,7 +57,7 @@ func NewReader(path string, q *FQueue) (r *Reader, err error) {
 	if err != nil {
 		return
 	}
-	if _, err = fd.Seek(int64(q.ReaderPtr), os.SEEK_SET); err != nil {
+	if _, err = fd.Seek(int64(q.ReaderOffset), os.SEEK_SET); err != nil {
 		return
 	}
 
@@ -79,27 +79,25 @@ func (b *Reader) remain() int {
 
 func (b *Reader) rolling() (err error) {
 	b.ReaderOffset = 1024
-	_, err = b.fd.Seek(1024, os.SEEK_SET)
+	_, err = b.fd.Seek(int64(b.ReaderOffset), os.SEEK_SET)
 	return
 }
 
-func (b *Reader) fileRead(p []byte) (n int, err error) {
+func (b *Reader) Close() error {
+	return b.fd.Close()
+}
+
+func (b *Reader) fdread(p []byte) (n int, err error) {
 	remain := b.remain()
 	e := len(p)
 	if remain == 0 {
 		err = io.EOF
 		return
 	}
-
 	if remain < e {
 		e = remain
 	}
 	n, err = b.fd.Read(p[:e])
-	b.ReaderOffset += n
-	b.Free += n
-	if b.ReaderOffset == b.WriterBottom {
-		b.rolling()
-	}
 	return
 }
 
@@ -112,7 +110,7 @@ func (b *Reader) fill() {
 	}
 	var n int
 	var err error
-	n, err = b.fileRead(b.buf[b.w:])
+	n, err = b.fdread(b.buf[b.w:])
 	// Read new data.
 	if n < 0 {
 		panic(errNegativeRead)

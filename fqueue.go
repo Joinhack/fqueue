@@ -10,8 +10,12 @@ import (
 	"time"
 )
 
+const (
+	MetaSize = 1024
+)
+
 var (
-	Timeout    = errors.New("operation timeout")
+	NoSpace    = errors.New("no space error")
 	QueueEmpty = errors.New("queue is empty")
 	magic      = "JFQ"
 )
@@ -19,9 +23,8 @@ var (
 type meta struct {
 	WriterOffset int
 	ReaderOffset int
-	ReaderPtr    int
 	WriterBottom int
-	Free         int
+	cBytes       int
 	Limit        int
 }
 
@@ -40,7 +43,9 @@ type FQueue struct {
 	*Reader
 	metaFd   *os.File
 	memQueue *list.List
+	running  bool
 	qMutex   *sync.Mutex
+	wg       *sync.WaitGroup
 }
 
 type FQueueCfg struct {
@@ -54,10 +59,9 @@ func (q *FQueue) getMeta() *meta {
 
 func (q *FQueue) printMeta() {
 	m := q.getMeta()
-	println("Free:", m.Free)
+	println("Contents:", m.cBytes)
 	println("Limit:", m.Limit)
 	println("ReaderOffset:", m.ReaderOffset)
-	println("ReaderPtr:", m.ReaderPtr)
 	println("WriterOffset:", m.WriterOffset)
 	println("WriterBottom:", m.WriterBottom)
 }
@@ -70,18 +74,11 @@ func (q *FQueue) Push(p []byte) error {
 	}
 	q.qMutex.Lock()
 	defer q.qMutex.Unlock()
-	var needSpace = plen + 16
-	for i := 0; i < 100 && q.Free < needSpace; i++ {
-		q.qMutex.Unlock()
-		//the queue is full, wait for consume
-		time.Sleep(10 * time.Millisecond)
-		q.qMutex.Lock()
+	var needSpace = plen + 2
+	if q.cBytes+needSpace > q.Limit-MetaSize {
+		return NoSpace
 	}
-	if q.Free < needSpace {
-		return Timeout
-	}
-	var l uint16 = uint16(len(p))
-	if err = binary.Write(q, binary.LittleEndian, l); err != nil {
+	if err = binary.Write(q, binary.LittleEndian, uint16(plen)); err != nil {
 		return err
 	}
 	if err = binary.Write(q, binary.LittleEndian, p); err != nil {
@@ -90,7 +87,9 @@ func (q *FQueue) Push(p []byte) error {
 	if err = q.Flush(); err != nil {
 		return err
 	}
-
+	q.cBytes += (2 + plen)
+	q.WriterOffset += 2 + plen
+	q.Writer.setBottom()
 	if q.WriterOffset > q.Limit {
 		q.Writer.rolling()
 	}
@@ -102,13 +101,14 @@ func NewFQueue(cfg *FQueueCfg) (fq *FQueue, err error) {
 	if cfg.FileLimit == 0 {
 		cfg.FileLimit = FileLimit
 	}
-	fileLimit := cfg.FileLimit
+	fileLimit := cfg.FileLimit + MetaSize //1024 is meta
 
 	q := &FQueue{
 		qMutex: &sync.Mutex{},
+		wg:     &sync.WaitGroup{},
 	}
-	q.Free = fileLimit
 	q.Limit = fileLimit
+	q.cBytes = 0
 
 	q.metaFd, err = os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
 
@@ -118,9 +118,8 @@ func NewFQueue(cfg *FQueueCfg) (fq *FQueue, err error) {
 		}
 		return
 	} else {
-		q.meta.ReaderOffset = 1024
-		q.meta.WriterOffset = 1024
-		q.meta.ReaderPtr = 1024
+		q.meta.ReaderOffset = MetaSize
+		q.meta.WriterOffset = MetaSize
 		q.dumpMeta()
 	}
 
@@ -131,19 +130,48 @@ func NewFQueue(cfg *FQueueCfg) (fq *FQueue, err error) {
 		return
 	}
 	fq = q
+	fq.running = true
+	q.wg.Add(1)
+	go fq.dumpMetaTask()
 	return
+}
 
+func (q *FQueue) Close() error {
+	q.running = false
+	q.wg.Wait()
+	q.qMutex.Lock()
+	defer q.qMutex.Unlock()
+	if err := q.metaFd.Close(); err != nil {
+		return err
+	}
+	if err := q.Writer.Close(); err != nil {
+		return err
+	}
+	if err := q.Reader.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (q *FQueue) dumpMetaTask() {
+	for q.running {
+		select {
+		case <-time.After(1 * time.Second):
+		}
+		q.dumpMeta()
+	}
+	q.wg.Done()
 }
 
 func (q *FQueue) dumpMeta() error {
-	var buf [1024]byte
+	var buf [MetaSize]byte
 	var p = buf[:]
 	var offset = 0
 	q.qMutex.Lock()
 	defer q.qMutex.Unlock()
 	copy(p[0:len(magic)], []byte(magic))
 	offset += len(magic)
-	binary.LittleEndian.PutUint64(p[offset:], uint64(q.meta.Free))
+	binary.LittleEndian.PutUint64(p[offset:], uint64(q.meta.cBytes))
 	offset += 8
 	binary.LittleEndian.PutUint64(p[offset:], uint64(q.meta.Limit))
 	offset += 8
@@ -151,7 +179,6 @@ func (q *FQueue) dumpMeta() error {
 	offset += 8
 	binary.LittleEndian.PutUint64(p[offset:], uint64(q.meta.WriterOffset))
 	offset += 8
-	binary.LittleEndian.PutUint64(p[offset:], uint64(q.meta.ReaderPtr))
 	if _, err := q.metaFd.Seek(0, os.SEEK_SET); err != nil {
 		return err
 	}
@@ -165,6 +192,17 @@ func (q *FQueue) Pop() (p []byte, err error) {
 	q.qMutex.Lock()
 	defer q.qMutex.Unlock()
 	var l uint16
+	if q.cBytes == 0 {
+		err = QueueEmpty
+		return
+	} else {
+		//check again
+		if q.ReaderOffset == q.WriterBottom {
+			q.WriterBottom = q.WriterOffset
+			q.Reader.rolling()
+		}
+	}
+
 	if err = binary.Read(q, binary.LittleEndian, &l); err != nil {
 		if err == io.EOF {
 			err = QueueEmpty
@@ -174,15 +212,10 @@ func (q *FQueue) Pop() (p []byte, err error) {
 	}
 	p = make([]byte, l)
 	if err = binary.Read(q, binary.LittleEndian, p); err != nil {
-		if err == io.EOF {
-			err = QueueEmpty
-			return
-		}
 		return
 	}
-	q.ReaderPtr += int(2 + l)
-	if q.ReaderPtr == q.WriterBottom && q.WriterOffset < q.WriterBottom {
-		q.WriterBottom = q.WriterOffset
-	}
+	q.ReaderOffset += int(2 + l)
+	q.cBytes -= int(2 + l)
+
 	return
 }

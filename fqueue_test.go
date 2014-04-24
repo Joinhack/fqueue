@@ -1,6 +1,8 @@
 package fqueue
 
 import (
+	"encoding/binary"
+	"math/rand"
 	"os"
 	"runtime"
 	"sync"
@@ -11,7 +13,7 @@ import (
 func TestFQueue(t *testing.T) {
 	var fq *FQueue
 	var err error
-	FileLimit = 1024 * 10
+	FileLimit = 100
 	os.Remove("/tmp/fq1.data")
 	if fq, err = NewFQueue(&FQueueCfg{Path: "/tmp/fq1.data"}); err != nil {
 		panic(err)
@@ -19,100 +21,23 @@ func TestFQueue(t *testing.T) {
 	var wg = &sync.WaitGroup{}
 	wg.Add(1)
 
-	var d = make([]byte, 1000)
-	for i := 0; i < len(d); i++ {
-		d[i] = byte(i % 255)
-	}
+	var d []byte
+	var limit = 10000
 	go func() {
 		var err error
-		for i := 0; i < 100000; i++ {
+		for i := 0; i < limit; {
+			l := rand.Int()%35 + 8
+			d = make([]byte, l)
+			binary.LittleEndian.PutUint32(d, uint32(i))
+			binary.LittleEndian.PutUint32(d[4:], uint32(l))
 			if err = fq.Push(d); err != nil {
-				panic(err)
-			}
-			runtime.Gosched()
-		}
-		println("write finished~!")
-		wg.Done()
-	}()
-	wg.Add(1)
-	go func() {
-		i := 0
-		for i < 100000 {
-			var p []byte
-			if p, err = fq.Pop(); err != nil {
-				if err == QueueEmpty {
-					t.Log("empty queue")
-					time.Sleep(2 * time.Millisecond)
+				if err == NoSpace {
+					runtime.Gosched()
 					continue
 				}
-				panic(err)
-			}
-			if len(p) == len(d) {
-				i++
-			} else {
-				panic(len(p))
-			}
-		}
-		wg.Done()
-	}()
-
-	wg.Wait()
-}
-
-func TestWriteTimeout(t *testing.T) {
-	var fq *FQueue
-	var err error
-	FileLimit = 1024 * 1024
-	os.Remove("/tmp/fq2.data")
-	if fq, err = NewFQueue(&FQueueCfg{Path: "/tmp/fq2.data"}); err != nil {
-		panic(err)
-	}
-	var wg = &sync.WaitGroup{}
-	wg.Add(1)
-
-	var d = make([]byte, 1000)
-	for i := 0; i < len(d); i++ {
-		d[i] = byte(i % 255)
-	}
-
-	for i := 0; i < 10000; i++ {
-		if err = fq.Push(d); err != nil {
-			if err != Timeout {
 				t.Fail()
 			}
-			break
-		}
-	}
-
-}
-
-func TestWriteTimeout2(t *testing.T) {
-	var fq *FQueue
-	var err error
-	FileLimit = 1024 * 10
-	os.Remove("/tmp/fq3.data")
-	if fq, err = NewFQueue(&FQueueCfg{Path: "/tmp/fq3.data"}); err != nil {
-		panic(err)
-	}
-	var wg = &sync.WaitGroup{}
-	wg.Add(1)
-
-	var d = make([]byte, 1000)
-	for i := 0; i < len(d); i++ {
-		d[i] = byte(i % 255)
-	}
-	var r = true
-	go func() {
-		var err error
-		for i := 0; i < 10000; i++ {
-			if err = fq.Push(d); err != nil {
-				if err == Timeout {
-					r = false
-					fq.printMeta()
-					break
-				}
-				panic(err)
-			}
+			i++
 		}
 		println("write finished~!")
 		wg.Done()
@@ -120,24 +45,31 @@ func TestWriteTimeout2(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		i := 0
-		for i < 10000 && r {
+		for i < limit {
 			var p []byte
 			if p, err = fq.Pop(); err != nil {
 				if err == QueueEmpty {
-					t.Log("empty queue")
+					time.Sleep(1 * time.Millisecond)
 					continue
 				}
+				fq.printMeta()
 				panic(err)
 			}
-			time.Sleep(500 * time.Millisecond)
-			if len(p) == len(d) {
+			if len(p) >= 8 {
+				c := int(binary.LittleEndian.Uint32(p))
+				l := int(binary.LittleEndian.Uint32(p[4:]))
+				if c != i || l != len(p) {
+					t.Fail()
+				}
 				i++
 			} else {
-				panic(len(p))
+				fq.printMeta()
+				t.Fail()
 			}
 		}
 		wg.Done()
 	}()
 
 	wg.Wait()
+	fq.Close()
 }

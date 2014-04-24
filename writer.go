@@ -1,15 +1,13 @@
 package fqueue
 
 import (
-	"io"
+	"bufio"
 	"os"
 )
 
 type Writer struct {
-	buf []byte
-	n   int
-	fd  *os.File
-	err error
+	*bufio.Writer
+	fd *os.File
 	*FQueue
 }
 
@@ -23,36 +21,16 @@ func (b *Writer) rolling() error {
 }
 
 func (b *Writer) setBottom() {
-	if b.WriterOffset >= b.WriterBottom {
+	if b.ReaderOffset < b.WriterOffset && b.cBytes < b.Limit {
 		b.WriterBottom = b.WriterOffset
 	}
 }
 
-func (b *Writer) Flush() error {
-	if b.err != nil {
-		return b.err
-	}
-	if b.n == 0 {
-		return nil
-	}
-	n, err := b.fd.Write(b.buf[0:b.n])
-	if n < b.n && err == nil {
-		err = io.ErrShortWrite
-	}
-
-	if err != nil {
-		if n > 0 && n < b.n {
-			copy(b.buf[0:b.n-n], b.buf[n:b.n])
-		}
-		b.n -= n
-		b.err = err
+func (b *Writer) Close() error {
+	if err := b.Flush(); err != nil {
 		return err
 	}
-	b.WriterOffset += b.n
-	b.setBottom()
-	b.Free -= b.n
-	b.n = 0
-	return nil
+	return b.fd.Close()
 }
 
 func NewWriter(path string, q *FQueue) (w *Writer, err error) {
@@ -67,34 +45,8 @@ func NewWriter(path string, q *FQueue) (w *Writer, err error) {
 	w = &Writer{
 		FQueue: q,
 		fd:     fd,
-		buf:    make([]byte, 4096),
+		Writer: bufio.NewWriter(fd),
 	}
 	err = nil
 	return
-}
-
-func (b *Writer) Available() int {
-	return len(b.buf) - b.n
-}
-
-func (b *Writer) Write(bs []byte) (nn int, err error) {
-	for len(bs) > b.Available() && b.err == nil {
-		var n int
-		if b.n == 0 {
-			n, b.err = b.fd.Write(bs)
-		} else {
-			n = copy(b.buf[b.n:], bs)
-			b.n += n
-			b.Flush()
-		}
-		nn += n
-		bs = bs[n:]
-	}
-	if b.err != nil {
-		return nn, b.err
-	}
-	n := copy(b.buf[b.n:], bs)
-	b.n += n
-	nn += n
-	return nn, nil
 }
