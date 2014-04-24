@@ -13,23 +13,25 @@ import (
 func TestFQueue(t *testing.T) {
 	var fq *FQueue
 	var err error
-	FileLimit = 100
+	FileLimit = 1024 * 10000000
 	os.Remove("/tmp/fq1.data")
-	if fq, err = NewFQueue(&FQueueCfg{Path: "/tmp/fq1.data"}); err != nil {
+	if fq, err = NewFQueue("/tmp/fq1.data"); err != nil {
 		panic(err)
 	}
 	var wg = &sync.WaitGroup{}
 	wg.Add(1)
-
+	var total = 0
 	var d []byte
-	var limit = 10000
+	var limit = 10000000
 	go func() {
 		var err error
 		for i := 0; i < limit; {
-			l := rand.Int()%35 + 8
+			l := rand.Int()%42 + 8
 			d = make([]byte, l)
+			total += l
 			binary.LittleEndian.PutUint32(d, uint32(i))
 			binary.LittleEndian.PutUint32(d[4:], uint32(l))
+
 			if err = fq.Push(d); err != nil {
 				if err == NoSpace {
 					runtime.Gosched()
@@ -64,12 +66,13 @@ func TestFQueue(t *testing.T) {
 				i++
 			} else {
 				fq.printMeta()
-				t.Fail()
+				panic("")
 			}
 		}
 		wg.Done()
 	}()
 
 	wg.Wait()
+	println("total read write bytes:", total)
 	fq.Close()
 }

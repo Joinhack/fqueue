@@ -21,7 +21,7 @@ func (b *Writer) rolling() error {
 }
 
 func (b *Writer) setBottom() {
-	if b.ReaderOffset < b.WriterOffset && b.cBytes < b.Limit {
+	if b.ReaderOffset < b.WriterOffset && b.fSize < b.Limit {
 		b.WriterBottom = b.WriterOffset
 	}
 }

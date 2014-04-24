@@ -67,7 +67,7 @@ func NewReader(path string, q *FQueue) (r *Reader, err error) {
 	r = &Reader{
 		FQueue: q,
 		fd:     fd,
-		buf:    make([]byte, 4096),
+		buf:    make([]byte, 0),
 	}
 	err = nil
 	return
