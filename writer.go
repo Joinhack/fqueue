@@ -12,11 +12,10 @@ type Writer struct {
 }
 
 func (b *Writer) rolling() error {
-	if _, err := b.fd.Seek(1024, os.SEEK_SET); err != nil {
+	if _, err := b.fd.Seek(MetaSize, os.SEEK_SET); err != nil {
 		return err
 	}
-
-	b.WriterOffset = 1024
+	b.WriterOffset = MetaSize
 	return nil
 }
 

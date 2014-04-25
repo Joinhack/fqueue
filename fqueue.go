@@ -4,7 +4,6 @@ import (
 	"container/list"
 	"encoding/binary"
 	"errors"
-	"io"
 	"os"
 	"sync"
 	"time"
@@ -83,7 +82,7 @@ func (q *FQueue) flush() {
 		if q.err = binary.Write(q, binary.LittleEndian, uint16(plen)); q.err != nil {
 			return
 		}
-		if q.err = binary.Write(q, binary.LittleEndian, p); q.err != nil {
+		if _, q.err = q.Write(p); q.err != nil {
 			return
 		}
 		q.fSize += (2 + plen)
@@ -93,7 +92,7 @@ func (q *FQueue) flush() {
 			if q.err = q.Writer.Flush(); q.err != nil {
 				return
 			}
-			q.Writer.rolling()
+			q.err = q.Writer.rolling()
 		}
 	}
 	if q.err = q.Writer.Flush(); q.err != nil {
@@ -213,8 +212,10 @@ func (q *FQueue) task() {
 		select {
 		case <-time.After(1 * time.Second):
 		}
-		q.dumpMeta()
+		q.qMutex.Lock()
 		q.needFlush()
+		q.dumpMeta()
+		q.qMutex.Unlock()
 	}
 	q.wg.Done()
 }
@@ -253,8 +254,6 @@ func (q *FQueue) dumpMeta() error {
 	var buf [MetaSize]byte
 	var p = buf[:]
 	var offset = 0
-	q.qMutex.Lock()
-	defer q.qMutex.Unlock()
 	if _, err := q.metaFd.Seek(0, os.SEEK_SET); err != nil {
 		return err
 	}
@@ -289,25 +288,37 @@ func (q *FQueue) Pop() (p []byte, err error) {
 		q.memQueue.Remove(e)
 		q.mSize -= 2 + len(p)
 		return
-	} else {
-		//check again
-		if q.ReaderOffset == q.WriterBottom {
-			q.WriterBottom = q.WriterOffset
-			q.Reader.rolling()
+	}
+
+	//check again
+	if q.ReaderOffset == q.WriterBottom && q.WriterOffset < q.WriterBottom {
+		q.WriterBottom = q.WriterOffset
+		if err = q.Reader.rolling(); err != nil {
+			return
 		}
 	}
 
-	if err = binary.Read(q, binary.LittleEndian, &l); err != nil {
-		if err == io.EOF {
-			err = QueueEmpty
+	var lbuf [2]byte
+	var n, c int
+	for c < len(lbuf) {
+		if n, err = q.Read(lbuf[:]); err != nil {
 			return
 		}
-		return
+		c += n
 	}
+	l = binary.LittleEndian.Uint16(lbuf[:])
+
 	p = make([]byte, l)
-	if err = binary.Read(q, binary.LittleEndian, p); err != nil {
-		return
+	c = 0
+	n = 0
+	for c < int(l) {
+
+		if n, err = q.Read(p[c:]); err != nil {
+			return
+		}
+		c += n
 	}
+
 	q.ReaderOffset += int(2 + l)
 	q.fSize -= int(2 + l)
 	return
