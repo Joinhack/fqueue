@@ -49,10 +49,10 @@ func (b *Reader) Close() error {
 }
 
 func (b *Reader) Read(p []byte) (n int, err error) {
-	return b.fd.Read(p)
+	return b._read(p)
 }
 
-func (b *Reader) fdread(p []byte) (n int, err error) {
+func (b *Reader) _read(p []byte) (n int, err error) {
 	remain := b.remain()
 	e := len(p)
 	if remain == 0 {
