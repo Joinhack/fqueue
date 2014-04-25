@@ -51,12 +51,7 @@ type FQueue struct {
 	running       bool
 	qMutex        *sync.Mutex
 	wg            *sync.WaitGroup
-}
-
-type FQueueCfg struct {
-	Path        string
-	FileLimit   int
-	MaxMemLimit int
+	err           error
 }
 
 func (q *FQueue) getMeta() *meta {

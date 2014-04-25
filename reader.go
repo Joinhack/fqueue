@@ -41,7 +41,6 @@ func (b *Reader) remain() int {
 func (b *Reader) rolling() (err error) {
 	_, err = b.fd.Seek(MetaSize, os.SEEK_SET)
 	b.ReaderOffset = MetaSize
-	b.p = b.p[0:0]
 	return
 }
 

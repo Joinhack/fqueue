@@ -22,7 +22,7 @@ func TestFQueue(t *testing.T) {
 	wg.Add(1)
 	var total = 0
 	var d []byte
-	var limit = 10000000
+	var limit = 1000000
 
 	go func() {
 		var err error
