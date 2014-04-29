@@ -69,30 +69,6 @@ func (q *FQueue) printMeta() {
 	println("WriterBottom:", m.WriterBottom)
 }
 
-func (q *FQueue) flush() {
-	if q.err != nil {
-		return
-	}
-	for e := q.memQueue.Front(); e != nil; e = e.Next() {
-		p := e.Value.([]byte)
-		var plen = len(p)
-		if plen == 0 {
-			panic("shit")
-		}
-
-	}
-	q.memQueue.Init()
-	q.mSize = 0
-}
-
-func (q *FQueue) needFlush() {
-	now := time.Now().Unix()
-	if q.mSize >= q.Limit-MetaSize || q.mSize >= q.MemLimit || (now-q.lastFlushTime >= 1 && q.mSize > 0) {
-		q.flush()
-		q.lastFlushTime = now
-	}
-}
-
 func (q *FQueue) Push(p []byte) error {
 	var plen = len(p)
 	if q.err != nil {
