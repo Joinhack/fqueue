@@ -6,13 +6,13 @@ import (
 	"runtime"
 	"sync"
 	"testing"
-	//"time"
+	"time"
 )
 
 func TestFQueue(t *testing.T) {
 	var fq *FQueue
 	var err error
-	FileLimit = 4096 * 10
+	FileLimit = 512 * 1024 * 1024
 	MemLimit = 0
 	os.Remove("/tmp/fq1.data")
 	if fq, err = NewFQueue("/tmp/fq1.data"); err != nil {
@@ -23,7 +23,7 @@ func TestFQueue(t *testing.T) {
 	var total = 0
 	var d []byte
 	var limit = 10000000
-
+	startTime := time.Now()
 	go func() {
 		var err error
 		for i := 0; i < limit; {
@@ -52,7 +52,7 @@ func TestFQueue(t *testing.T) {
 			var p []byte
 			if p, err = fq.Pop(); err != nil {
 				if err == QueueEmpty {
-					runtime.Gosched()
+					time.Sleep(1 * time.Millisecond)
 					continue
 				}
 				fq.printMeta()
@@ -75,6 +75,7 @@ func TestFQueue(t *testing.T) {
 	}()
 
 	wg.Wait()
-	println("total read write bytes:", total)
+	endTime := time.Now()
+	println("total read write bytes:", total, "speed(bytes/s):", total/int(endTime.Unix()-startTime.Unix()), ",speed(bytes/ms):", total/int((endTime.UnixNano()-startTime.UnixNano())/1000000))
 	fq.Close()
 }

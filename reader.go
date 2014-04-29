@@ -2,7 +2,7 @@ package fqueue
 
 import (
 	"errors"
-	"io"
+	//"io"
 	"os"
 	"reflect"
 	"unsafe"
@@ -93,7 +93,7 @@ func (b *Reader) Read(p []byte) (n int, err error) {
 func (b *Reader) _read(p []byte) (n int, err error) {
 	remain := b.remain()
 	if remain == 0 {
-		err = io.EOF
+		n = 0
 		return
 	}
 
