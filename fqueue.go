@@ -17,6 +17,7 @@ const (
 
 var (
 	NoSpace     = errors.New("no space error")
+	MunMapErr   = errors.New("munmap error")
 	QueueEmpty  = errors.New("queue is empty")
 	InvalidMeta = errors.New("invalid meta")
 	MustBeFile  = errors.New("must be file")
@@ -51,7 +52,6 @@ type FQueue struct {
 	running       bool
 	qMutex        *sync.Mutex
 	wg            *sync.WaitGroup
-	err           error
 }
 
 func (q *FQueue) getMeta() *meta {
@@ -69,12 +69,10 @@ func (q *FQueue) printMeta() {
 
 func (q *FQueue) Push(p []byte) error {
 	var plen = len(p)
-	if q.err != nil {
-		return q.err
-	}
 	if plen == 0 {
 		return nil
 	}
+	var err error
 	q.qMutex.Lock()
 	defer q.qMutex.Unlock()
 
@@ -85,19 +83,19 @@ func (q *FQueue) Push(p []byte) error {
 	if (q.WriterOffset < q.WriterBottom) && q.WriterOffset+needSpace > q.ReaderOffset {
 		return NoSpace
 	}
-	if q.err = binary.Write(q, binary.LittleEndian, uint16(plen)); q.err != nil {
-		return q.err
+	if err = binary.Write(q, binary.LittleEndian, uint16(plen)); err != nil {
+		return err
 	}
-	if _, q.err = q.Write(p); q.err != nil {
-		return q.err
+	if _, err = q.Write(p); err != nil {
+		return err
 	}
 	q.FSize += (2 + plen)
 	q.WriterOffset += 2 + plen
 	q.Writer.setBottom()
 	if q.WriterOffset >= q.Limit {
-		q.err = q.Writer.rolling()
+		err = q.Writer.rolling()
 	}
-	return q.err
+	return err
 }
 
 func (q *FQueue) prepareQueueFile() {

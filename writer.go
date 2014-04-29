@@ -24,7 +24,6 @@ type Writer struct {
 func (b *Writer) rolling() error {
 	b.unmapper()
 	b.WriterOffset = MetaSize
-
 	b.offset = int64(b.WriterOffset)
 	b.p = b.p[:0]
 	return nil
@@ -37,22 +36,26 @@ func (b *Writer) setBottom() {
 }
 
 func (b *Writer) Close() error {
-	b.unmapper()
+	if err := b.unmapper(); err != nil {
+		return err
+	}
 	return b.fd.Close()
 }
 
-func (b *Writer) unmapper() (err error) {
+func (b *Writer) unmapper() error {
 	if b.ptr != nil {
 		if c := C.munmap(b.ptr, PageSize); c != 0 {
-			return
+			return MunMapErr
 		}
 		b.ptr = nil
 	}
-	return
+	return nil
 }
 
 func (b *Writer) mapper() (err error) {
-	b.unmapper()
+	if err = b.unmapper(); err != nil {
+		return
+	}
 	b.ptr, err = C.mmap(nil, C.size_t(PageSize), C.PROT_WRITE, C.MAP_SHARED, C.int(b.fd.Fd()), C.off_t(b.offset))
 	if err != nil {
 		panic(err)
