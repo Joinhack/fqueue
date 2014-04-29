@@ -11,17 +11,20 @@ import (
 )
 
 const (
-	PageSize = 4096
-	MetaSize = PageSize
+	PageSize      = 4096
+	MetaSize      = PageSize
+	readTryTimes  = 3
+	writeTryTimes = 3
 )
 
 var (
-	NoSpace     = errors.New("no space error")
-	MunMapErr   = errors.New("munmap error")
-	QueueEmpty  = errors.New("queue is empty")
-	InvalidMeta = errors.New("invalid meta")
-	MustBeFile  = errors.New("must be file")
-	magic       = "JFQ"
+	NoSpace          = errors.New("no space error")
+	MunMapErr        = errors.New("munmap error")
+	QueueEmpty       = errors.New("queue is empty")
+	InvalidMeta      = errors.New("invalid meta")
+	MustBeFile       = errors.New("must be file")
+	ReachMaxTryTimes = errors.New("reach max retry times for read/write")
+	magic            = "JFQ"
 )
 
 type meta struct {
@@ -262,23 +265,32 @@ func (q *FQueue) Pop() (p []byte, err error) {
 	}
 
 	var lbuf [2]byte
-	var n, c int
+	var n, c, retry int
 	c = 0
-	for c < len(lbuf) {
+
+	for retry = readTryTimes; retry > 0 && c < len(lbuf); retry-- {
 		if n, err = q.Read(lbuf[c:]); err != nil {
 			return
 		}
 		c += n
 	}
+	if retry <= 0 {
+		err = ReachMaxTryTimes
+		return
+	}
 	l = binary.LittleEndian.Uint16(lbuf[:])
 	p = make([]byte, l)
 	c = 0
 	n = 0
-	for c < int(l) {
+	for retry = readTryTimes; retry > 0 && c < int(l); retry-- {
 		if n, err = q.Read(p[c:]); err != nil {
 			return
 		}
 		c += n
+	}
+	if retry <= 0 {
+		err = ReachMaxTryTimes
+		return
 	}
 
 	q.ReaderOffset += int(2 + l)

@@ -72,7 +72,8 @@ func (b *Writer) mapper() (err error) {
 func (b *Writer) Write(p []byte) (n int, err error) {
 	c := 0
 	lp := len(p)
-	for c < lp {
+	var retry int
+	for retry = writeTryTimes; retry > 0 && c < lp; retry-- {
 		if len(b.p) == 0 {
 			err = b.mapper()
 			if err != nil {
@@ -82,6 +83,10 @@ func (b *Writer) Write(p []byte) (n int, err error) {
 		n = copy(b.p, p[c:])
 		b.p = b.p[n:]
 		c += n
+	}
+	if retry <= 0 {
+		err = ReachMaxTryTimes
+		return
 	}
 	return
 }
