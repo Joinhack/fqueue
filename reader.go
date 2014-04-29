@@ -4,22 +4,31 @@ import (
 	"errors"
 	"io"
 	"os"
+	"reflect"
+	"unsafe"
 )
+
+/*
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/mman.h>
+*/
+import "C"
 
 var errNegativeRead = errors.New("fqueue: reader returned negative count from Read")
 
 type Reader struct {
 	fd *os.File
 	*FQueue
+	p      []byte
+	offset int64
+	ptr    unsafe.Pointer
 }
 
 func NewReader(path string, q *FQueue) (r *Reader, err error) {
 	var fd *os.File
-	fd, err = os.OpenFile(path, os.O_RDONLY, 0644)
+	fd, err = os.OpenFile(path, os.O_RDWR, 0644)
 	if err != nil {
-		return
-	}
-	if _, err = fd.Seek(int64(q.ReaderOffset), os.SEEK_SET); err != nil {
 		return
 	}
 
@@ -29,9 +38,15 @@ func NewReader(path string, q *FQueue) (r *Reader, err error) {
 	r = &Reader{
 		FQueue: q,
 		fd:     fd,
+		offset: int64(q.ReaderOffset),
 	}
 	err = nil
 	return
+}
+
+func (b *Reader) SetReaderOffset(o int) {
+	b.ReaderOffset = o
+	b.offset = int64(b.ReaderOffset)
 }
 
 func (b *Reader) remain() int {
@@ -39,8 +54,31 @@ func (b *Reader) remain() int {
 }
 
 func (b *Reader) rolling() (err error) {
-	_, err = b.fd.Seek(MetaSize, os.SEEK_SET)
 	b.ReaderOffset = MetaSize
+	b.offset = int64(b.ReaderOffset)
+	b.p = b.p[:0]
+	return
+}
+
+func (b *Reader) mapper() (err error) {
+
+	if b.ptr != nil {
+		if c := C.munmap(b.ptr, PageSize); c != 0 {
+			return
+		}
+		b.ptr = nil
+	}
+
+	b.ptr, err = C.mmap(nil, C.size_t(PageSize), C.PROT_WRITE, C.MAP_SHARED, C.int(b.fd.Fd()), C.off_t(b.offset))
+	if err != nil {
+		panic(err)
+	}
+	var sliceH reflect.SliceHeader
+	sliceH.Cap = PageSize
+	sliceH.Len = PageSize
+	sliceH.Data = uintptr(b.ptr)
+	b.p = *(*[]byte)(unsafe.Pointer(&sliceH))
+	b.offset += PageSize
 	return
 }
 
@@ -54,15 +92,21 @@ func (b *Reader) Read(p []byte) (n int, err error) {
 
 func (b *Reader) _read(p []byte) (n int, err error) {
 	remain := b.remain()
-	e := len(p)
 	if remain == 0 {
 		err = io.EOF
 		return
 	}
+
+	if len(b.p) == 0 {
+		if err = b.mapper(); err != nil {
+			return
+		}
+	}
+	e := len(b.p)
 	if remain < e {
 		e = remain
 	}
-
-	n, err = b.fd.Read(p[:e])
+	n = copy(p, b.p[:e])
+	b.p = b.p[n:]
 	return
 }

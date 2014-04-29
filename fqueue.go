@@ -4,13 +4,15 @@ import (
 	"container/list"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"os"
 	"sync"
 	"time"
 )
 
 const (
-	MetaSize = 1024
+	PageSize = 4096
+	MetaSize = PageSize
 )
 
 var (
@@ -26,7 +28,7 @@ type meta struct {
 	ReaderOffset int
 	WriterBottom int
 	Limit        int
-	fSize        int
+	FSize        int
 	MemLimit     int
 }
 
@@ -60,7 +62,7 @@ func (q *FQueue) getMeta() *meta {
 
 func (q *FQueue) printMeta() {
 	m := q.getMeta()
-	println("File Contents:", m.fSize)
+	println("File Contents:", m.FSize)
 	println("Limit:", m.Limit)
 	println("ReaderOffset:", m.ReaderOffset)
 	println("WriterOffset:", m.WriterOffset)
@@ -74,28 +76,11 @@ func (q *FQueue) flush() {
 	for e := q.memQueue.Front(); e != nil; e = e.Next() {
 		p := e.Value.([]byte)
 		var plen = len(p)
-		if q.err = binary.Write(q, binary.LittleEndian, uint16(plen)); q.err != nil {
-			return
+		if plen == 0 {
+			panic("shit")
 		}
-		if _, q.err = q.Write(p); q.err != nil {
-			return
-		}
-		q.fSize += (2 + plen)
-		q.WriterOffset += 2 + plen
-		q.Writer.setBottom()
-		if q.WriterOffset > q.Limit {
-			if q.err = q.Writer.Flush(); q.err != nil {
-				return
-			}
-			q.err = q.Writer.rolling()
-		}
+
 	}
-	if q.err = q.Writer.Flush(); q.err != nil {
-		return
-	}
-	// if q.err = q.Writer.fd.Sync(); q.err != nil {
-	// 	return
-	// }
 	q.memQueue.Init()
 	q.mSize = 0
 }
@@ -120,16 +105,36 @@ func (q *FQueue) Push(p []byte) error {
 	defer q.qMutex.Unlock()
 
 	var needSpace = plen + 2
-	if q.mSize+needSpace > q.Limit-MetaSize-q.fSize {
+	if needSpace+q.FSize > q.Limit-MetaSize {
 		return NoSpace
 	}
-	if q.fSize+needSpace > q.Limit-MetaSize {
+	if (q.WriterOffset < q.WriterBottom) && q.WriterOffset+needSpace > q.ReaderOffset {
 		return NoSpace
 	}
-	q.mSize += needSpace
-	q.memQueue.PushBack(p)
-	q.needFlush()
-	return nil
+	if q.err = binary.Write(q, binary.LittleEndian, uint16(plen)); q.err != nil {
+		return q.err
+	}
+	if _, q.err = q.Write(p); q.err != nil {
+		return q.err
+	}
+	q.FSize += (2 + plen)
+	q.WriterOffset += 2 + plen
+	q.Writer.setBottom()
+	if q.WriterOffset >= q.Limit {
+		q.err = q.Writer.rolling()
+	}
+	return q.err
+}
+
+func (q *FQueue) prepareQueueFile() {
+	empty := make([]byte, 4096)
+	n := time.Now()
+	fmt.Println("prepared queue file")
+	for i := 0; i < q.Limit; {
+		q.metaFd.Write(empty)
+		i += len(empty)
+	}
+	fmt.Println("prepared queue file, used time:", (time.Now().UnixNano()-n.UnixNano())/1000000, "ms")
 }
 
 func NewFQueue(path string) (fq *FQueue, err error) {
@@ -143,18 +148,22 @@ func NewFQueue(path string) (fq *FQueue, err error) {
 		memQueue: list.New(),
 	}
 	q.Limit = fileLimit
-	q.fSize = 0
+	q.FSize = 0
 	q.MemLimit = memLimit
 	var st os.FileInfo
 	if st, err = os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
+
 			q.metaFd, err = os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
+
 			q.meta.ReaderOffset = MetaSize
 			q.meta.WriterOffset = MetaSize
+			q.meta.WriterBottom = q.meta.WriterOffset
 			q.dumpMeta()
 			if err != nil {
 				return
 			}
+			q.prepareQueueFile()
 		} else {
 			return
 		}
@@ -208,7 +217,6 @@ func (q *FQueue) task() {
 		case <-time.After(1 * time.Second):
 		}
 		q.qMutex.Lock()
-		q.needFlush()
 		q.dumpMeta()
 		q.qMutex.Unlock()
 	}
@@ -233,7 +241,7 @@ func (q *FQueue) loadMeta(path string) error {
 	}
 
 	offset += len(magic)
-	q.meta.fSize = int(binary.LittleEndian.Uint64(p[offset:]))
+	q.meta.FSize = int(binary.LittleEndian.Uint64(p[offset:]))
 	offset += 8
 	q.meta.Limit = int(binary.LittleEndian.Uint64(p[offset:]))
 	offset += 8
@@ -254,7 +262,7 @@ func (q *FQueue) dumpMeta() error {
 	}
 	copy(p[0:len(magic)], []byte(magic))
 	offset += len(magic)
-	binary.LittleEndian.PutUint64(p[offset:], uint64(q.meta.fSize))
+	binary.LittleEndian.PutUint64(p[offset:], uint64(q.meta.FSize))
 	offset += 8
 	binary.LittleEndian.PutUint64(p[offset:], uint64(q.meta.Limit))
 	offset += 8
@@ -273,19 +281,10 @@ func (q *FQueue) Pop() (p []byte, err error) {
 	q.qMutex.Lock()
 	defer q.qMutex.Unlock()
 	var l uint16
-	if q.fSize == 0 {
-		if q.mSize == 0 {
-			err = QueueEmpty
-			return
-		}
-		e := q.memQueue.Front()
-		p = e.Value.([]byte)
-		q.memQueue.Remove(e)
-		q.mSize -= 2 + len(p)
+	if q.FSize == 0 {
+		err = QueueEmpty
 		return
 	}
-
-	//check again
 	if q.ReaderOffset == q.WriterBottom && q.WriterOffset < q.WriterBottom {
 		q.WriterBottom = q.WriterOffset
 		if err = q.Reader.rolling(); err != nil {
@@ -295,19 +294,18 @@ func (q *FQueue) Pop() (p []byte, err error) {
 
 	var lbuf [2]byte
 	var n, c int
+	c = 0
 	for c < len(lbuf) {
-		if n, err = q.Read(lbuf[:]); err != nil {
+		if n, err = q.Read(lbuf[c:]); err != nil {
 			return
 		}
 		c += n
 	}
 	l = binary.LittleEndian.Uint16(lbuf[:])
-
 	p = make([]byte, l)
 	c = 0
 	n = 0
 	for c < int(l) {
-
 		if n, err = q.Read(p[c:]); err != nil {
 			return
 		}
@@ -315,6 +313,6 @@ func (q *FQueue) Pop() (p []byte, err error) {
 	}
 
 	q.ReaderOffset += int(2 + l)
-	q.fSize -= int(2 + l)
+	q.FSize -= int(2 + l)
 	return
 }

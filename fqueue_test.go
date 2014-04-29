@@ -2,18 +2,18 @@ package fqueue
 
 import (
 	"encoding/binary"
-	//"math/rand"
 	"os"
 	"runtime"
 	"sync"
 	"testing"
-	"time"
+	//"time"
 )
 
 func TestFQueue(t *testing.T) {
 	var fq *FQueue
 	var err error
-	FileLimit = 1024 * 15
+	FileLimit = 4096 * 10
+	MemLimit = 0
 	os.Remove("/tmp/fq1.data")
 	if fq, err = NewFQueue("/tmp/fq1.data"); err != nil {
 		panic(err)
@@ -22,12 +22,12 @@ func TestFQueue(t *testing.T) {
 	wg.Add(1)
 	var total = 0
 	var d []byte
-	var limit = 1000000
+	var limit = 10000000
 
 	go func() {
 		var err error
 		for i := 0; i < limit; {
-			l := i%100 + 8
+			l := i%1024 + 8
 			d = make([]byte, l)
 			total += l
 			binary.LittleEndian.PutUint32(d, uint32(i))
@@ -52,7 +52,7 @@ func TestFQueue(t *testing.T) {
 			var p []byte
 			if p, err = fq.Pop(); err != nil {
 				if err == QueueEmpty {
-					time.Sleep(1 * time.Millisecond)
+					runtime.Gosched()
 					continue
 				}
 				fq.printMeta()
@@ -64,6 +64,7 @@ func TestFQueue(t *testing.T) {
 				if c != i || l != len(p) {
 					t.Fail()
 				}
+				// println(l)
 				i++
 			} else {
 				fq.printMeta()
