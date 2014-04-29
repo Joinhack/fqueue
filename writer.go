@@ -37,6 +37,7 @@ func (b *Writer) setBottom() {
 }
 
 func (b *Writer) Close() error {
+	b.unmapper()
 	return b.fd.Close()
 }
 

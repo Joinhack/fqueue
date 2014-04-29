@@ -12,8 +12,7 @@ import (
 func TestFQueue(t *testing.T) {
 	var fq *FQueue
 	var err error
-	FileLimit = 512 * 1024 * 1024
-	MemLimit = 0
+	FileLimit = 10 * 1024 * 1024
 	os.Remove("/tmp/fq1.data")
 	if fq, err = NewFQueue("/tmp/fq1.data"); err != nil {
 		panic(err)
@@ -22,7 +21,7 @@ func TestFQueue(t *testing.T) {
 	wg.Add(1)
 	var total = 0
 	var d []byte
-	var limit = 10000000
+	var limit = 1000000
 	startTime := time.Now()
 	go func() {
 		var err error

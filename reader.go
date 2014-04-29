@@ -60,15 +60,18 @@ func (b *Reader) rolling() (err error) {
 	return
 }
 
-func (b *Reader) mapper() (err error) {
-
+func (b *Reader) unmapper() (err error) {
 	if b.ptr != nil {
 		if c := C.munmap(b.ptr, PageSize); c != 0 {
 			return
 		}
 		b.ptr = nil
 	}
+	return
+}
 
+func (b *Reader) mapper() (err error) {
+	b.unmapper()
 	b.ptr, err = C.mmap(nil, C.size_t(PageSize), C.PROT_WRITE, C.MAP_SHARED, C.int(b.fd.Fd()), C.off_t(b.offset))
 	if err != nil {
 		panic(err)
@@ -83,6 +86,7 @@ func (b *Reader) mapper() (err error) {
 }
 
 func (b *Reader) Close() error {
+	b.unmapper()
 	return b.fd.Close()
 }
 

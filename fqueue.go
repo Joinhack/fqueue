@@ -29,12 +29,10 @@ type meta struct {
 	WriterBottom int
 	Limit        int
 	FSize        int
-	MemLimit     int
 }
 
 var (
 	FileLimit = 1024 * 1024 * 1024
-	MemLimit  = 4096 * 1024 * 2
 )
 
 type Queue interface {
@@ -116,8 +114,6 @@ func (q *FQueue) prepareQueueFile() {
 func NewFQueue(path string) (fq *FQueue, err error) {
 	fileLimit := FileLimit + MetaSize //1024 is meta
 
-	memLimit := MemLimit
-
 	q := &FQueue{
 		qMutex:   &sync.Mutex{},
 		wg:       &sync.WaitGroup{},
@@ -125,7 +121,6 @@ func NewFQueue(path string) (fq *FQueue, err error) {
 	}
 	q.Limit = fileLimit
 	q.FSize = 0
-	q.MemLimit = memLimit
 	var st os.FileInfo
 	if st, err = os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
