@@ -1,8 +1,6 @@
 package fqueue
 
 import (
-	"errors"
-	//"io"
 	"os"
 	"reflect"
 	"unsafe"
@@ -14,8 +12,6 @@ import (
 #include <sys/mman.h>
 */
 import "C"
-
-var errNegativeRead = errors.New("fqueue: reader returned negative count from Read")
 
 type Reader struct {
 	fd *os.File
