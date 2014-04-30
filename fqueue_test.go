@@ -2,8 +2,8 @@ package fqueue
 
 import (
 	"encoding/binary"
+	"math/rand"
 	"os"
-	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -26,7 +26,7 @@ func TestFQueue(t *testing.T) {
 	go func() {
 		var err error
 		for i := 0; i < limit; {
-			l := i%1024 + 8
+			l := rand.Intn(1024) + 8
 			d = make([]byte, l)
 			total += l
 			binary.LittleEndian.PutUint32(d, uint32(i))
@@ -34,7 +34,7 @@ func TestFQueue(t *testing.T) {
 
 			if err = fq.Push(d); err != nil {
 				if err == NoSpace {
-					runtime.Gosched()
+					time.Sleep(1 * time.Millisecond)
 					continue
 				}
 				t.Fail()
@@ -63,7 +63,7 @@ func TestFQueue(t *testing.T) {
 				if c != i || l != len(p) {
 					t.Fail()
 				}
-				// println(l)
+				//println(c, l)
 				i++
 			} else {
 				fq.printMeta()
