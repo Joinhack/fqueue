@@ -12,7 +12,7 @@ import (
 func TestFQueue(t *testing.T) {
 	var fq *FQueue
 	var err error
-	FileLimit = 10 * 1024 * 1024
+	FileLimit = 4096 * 2
 	os.Remove("/tmp/fq1.data")
 	if fq, err = NewFQueue("/tmp/fq1.data"); err != nil {
 		panic(err)
@@ -26,7 +26,7 @@ func TestFQueue(t *testing.T) {
 	go func() {
 		var err error
 		for i := 0; i < limit; {
-			l := rand.Intn(1024) + 8
+			l := rand.Intn(64) + 8
 			d = make([]byte, l)
 			total += l
 			binary.LittleEndian.PutUint32(d, uint32(i))

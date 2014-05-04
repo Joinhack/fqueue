@@ -2,7 +2,6 @@ package fqueue
 
 import (
 	"os"
-	"reflect"
 	"unsafe"
 )
 
@@ -60,11 +59,11 @@ func (b *Writer) mapper() (err error) {
 	if err != nil {
 		panic(err)
 	}
-	var sliceH reflect.SliceHeader
-	sliceH.Cap = PageSize
-	sliceH.Len = PageSize
-	sliceH.Data = uintptr(b.ptr)
-	b.p = *(*[]byte)(unsafe.Pointer(&sliceH))
+	b.p = *(*[]byte)(unsafe.Pointer(&struct {
+		p    uintptr
+		l, c int
+	}{uintptr(b.ptr), PageSize, PageSize}))
+
 	b.offset += PageSize
 	return
 }
