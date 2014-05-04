@@ -85,17 +85,17 @@ func (q *FQueue) Push(p []byte) error {
 	if needSpace+q.FSize > q.Limit-MetaSize {
 		return NoSpace
 	}
-	if (q.WriterOffset < q.WriterBottom) && (q.WriterOffset+needSpace > q.ReaderOffset || q.WriterOffset+needSpace >= q.ReaderOffset) {
+	if (q.WriterOffset < q.WriterBottom) && (q.WriterOffset+needSpace >= q.ReaderOffset) {
 		return NoSpace
 	}
 
 	if q.WriterOffset+needSpace >= q.Limit {
-		if q.Limit-q.WriterBottom+needSpace+q.FSize < q.Limit-MetaSize {
+		//origin: q.Limit-q.WriterBottom+needSpace+q.FSize < q.Limit-MetaSize
+		if needSpace+q.FSize-q.WriterBottom < -MetaSize {
 			err = q.Writer.rolling()
 		} else {
 			return NoSpace
 		}
-
 	}
 
 	if err = binary.Write(q, binary.LittleEndian, uint16(plen)); err != nil {
