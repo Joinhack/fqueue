@@ -59,13 +59,14 @@ func TestFQueue(t *testing.T) {
 				c := int(binary.LittleEndian.Uint32(p))
 				l := int(binary.LittleEndian.Uint32(p[4:]))
 				if c != i || l != len(p) {
-					t.FailNow()
+					t.Fatalf("the seq error")
+					return
 				}
 				// println(c, l)
 				i++
 			} else {
-				fq.printMeta()
-				panic(len(p))
+				t.Fatalf("the test data mustbe greater than 8")
+				return
 			}
 		}
 		wg.Done()
