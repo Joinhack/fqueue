@@ -28,6 +28,16 @@ func NewReader(path string, q *FQueue) (r *Reader, err error) {
 		fd:     fd,
 		offset: int64(q.ReaderOffset),
 	}
+	//set the mapper offset
+	if r.ReaderOffset%PageSize == 0 {
+		r.offset = int64(r.ReaderOffset)
+	} else {
+		offset := (r.ReaderOffset/PageSize + 1) * PageSize
+		if offset > q.Limit {
+			offset = q.Limit
+		}
+		r.offset = int64(offset)
+	}
 	err = nil
 	return
 }

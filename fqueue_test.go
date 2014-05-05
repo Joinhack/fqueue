@@ -21,12 +21,12 @@ func TestFQueue(t *testing.T) {
 	wg.Add(1)
 	var total = 0
 	var d []byte
-	var limit = 1000000
+	var limit = 100000
 	startTime := time.Now()
 	go func() {
 		var err error
 		for i := 0; i < limit; {
-			l := rand.Intn(64) + 8
+			l := rand.Intn(256) + 8
 			d = make([]byte, l)
 			total += l
 			binary.LittleEndian.PutUint32(d, uint32(i))
@@ -41,7 +41,6 @@ func TestFQueue(t *testing.T) {
 			}
 			i++
 		}
-		println("write finished~!")
 		wg.Done()
 	}()
 	wg.Add(1)
@@ -61,7 +60,7 @@ func TestFQueue(t *testing.T) {
 				c := int(binary.LittleEndian.Uint32(p))
 				l := int(binary.LittleEndian.Uint32(p[4:]))
 				if c != i || l != len(p) {
-					t.Fail()
+					t.FailNow()
 				}
 				//println(c, l)
 				i++
@@ -75,6 +74,7 @@ func TestFQueue(t *testing.T) {
 
 	wg.Wait()
 	endTime := time.Now()
-	println("total read write bytes:", total, "speed(bytes/s):", total/int(endTime.Unix()-startTime.Unix()), ",speed(bytes/ms):", total/int((endTime.UnixNano()-startTime.UnixNano())/1000000))
+	t.Log("total read write bytes:", total, "speed(bytes/s):", total/int(endTime.Unix()-startTime.Unix()), ",speed(bytes/ms):", total/int((endTime.UnixNano()-startTime.UnixNano())/1000000))
 	fq.Close()
+	os.Remove("/tmp/fq1.data")
 }

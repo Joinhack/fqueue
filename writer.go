@@ -100,7 +100,16 @@ func NewWriter(path string, q *FQueue) (w *Writer, err error) {
 		FQueue: q,
 		fd:     fd,
 	}
-	w.offset = int64(w.WriterOffset)
+	//set the mapper offset
+	if w.WriterOffset%PageSize == 0 {
+		w.offset = int64(w.WriterOffset)
+	} else {
+		offset := (w.WriterOffset/PageSize + 1) * PageSize
+		if offset > q.Limit {
+			offset = q.Limit
+		}
+		w.offset = int64(offset)
+	}
 	err = nil
 	return
 }
