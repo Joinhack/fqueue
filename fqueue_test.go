@@ -18,7 +18,7 @@ func TestFQueue(t *testing.T) {
 		panic(err)
 	}
 	var wg = &sync.WaitGroup{}
-	wg.Add(1)
+	wg.Add(2)
 	var total = 0
 	var d []byte
 	var limit = 100000
@@ -43,7 +43,6 @@ func TestFQueue(t *testing.T) {
 		}
 		wg.Done()
 	}()
-	wg.Add(1)
 	go func() {
 		i := 0
 		for i < limit {
