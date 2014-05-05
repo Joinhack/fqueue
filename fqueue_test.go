@@ -62,7 +62,7 @@ func TestFQueue(t *testing.T) {
 				if c != i || l != len(p) {
 					t.FailNow()
 				}
-				//println(c, l)
+				// println(c, l)
 				i++
 			} else {
 				fq.printMeta()

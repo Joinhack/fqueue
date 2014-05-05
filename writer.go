@@ -2,12 +2,11 @@ package fqueue
 
 import (
 	"os"
+	"syscall"
 	"unsafe"
 )
 
 /*
-#include <fcntl.h>
-#include <unistd.h>
 #include <sys/mman.h>
 */
 import "C"
@@ -15,7 +14,7 @@ import "C"
 type Writer struct {
 	p      []byte
 	offset int64
-	ptr    unsafe.Pointer
+	ptr    []byte
 	fd     *os.File
 	*FQueue
 }
@@ -42,11 +41,19 @@ func (b *Writer) Close() error {
 }
 
 func (b *Writer) unmapper() error {
-	if b.ptr != nil {
-		if c := C.munmap(b.ptr, PageSize); c != 0 {
-			return MunMapErr
+	if len(b.ptr) > 0 {
+		// I don't know why it always return "invalid argument"
+		// if err := syscall.Munmap(b.ptr); err != nil {
+		// 	return err
+		// }
+		slice := (*struct {
+			p    uintptr
+			l, c int
+		})(unsafe.Pointer(&b.ptr))
+		err := C.munmap(unsafe.Pointer(slice.p), C.size_t(slice.l))
+		if err != 0 {
+			panic("munmapper error")
 		}
-		b.ptr = nil
 	}
 	return nil
 }
@@ -55,15 +62,11 @@ func (b *Writer) mapper() (err error) {
 	if err = b.unmapper(); err != nil {
 		return
 	}
-	b.ptr, err = C.mmap(nil, C.size_t(PageSize), C.PROT_WRITE, C.MAP_SHARED, C.int(b.fd.Fd()), C.off_t(b.offset))
+	b.ptr, err = syscall.Mmap(int(b.fd.Fd()), b.offset, PageSize, syscall.PROT_WRITE, syscall.MAP_SHARED)
 	if err != nil {
-		panic(err)
+		return err
 	}
-	b.p = *(*[]byte)(unsafe.Pointer(&struct {
-		p    uintptr
-		l, c int
-	}{uintptr(b.ptr), PageSize, PageSize}))
-
+	b.p = b.ptr
 	b.offset += PageSize
 	return
 }
