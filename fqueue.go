@@ -43,6 +43,7 @@ var (
 type Queue interface {
 	Push([]byte) error
 	Pop() ([]byte, error)
+	Close() error
 }
 
 type FQueue struct {
