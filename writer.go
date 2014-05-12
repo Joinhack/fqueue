@@ -6,11 +6,6 @@ import (
 	"unsafe"
 )
 
-/*
-#include <sys/mman.h>
-*/
-import "C"
-
 type Writer struct {
 	p      []byte
 	offset int64
@@ -42,17 +37,9 @@ func (b *Writer) Close() error {
 
 func (b *Writer) unmapper() error {
 	if len(b.ptr) > 0 {
-		// I don't know why it always return "invalid argument"
-		// if err := syscall.Munmap(b.ptr); err != nil {
-		// 	return err
-		// }
-		slice := (*struct {
-			p    uintptr
-			l, c int
-		})(unsafe.Pointer(&b.ptr))
-		err := C.munmap(unsafe.Pointer(slice.p), C.size_t(slice.l))
-		if err != 0 {
-			panic("munmapper error")
+		_, _, errno := syscall.Syscall(syscall.SYS_MUNMAP, uintptr(unsafe.Pointer(&b.ptr[0])), uintptr(len(b.ptr)), 0)
+		if errno != 0 {
+			return syscall.Errno(errno)
 		}
 	}
 	return nil

@@ -3,6 +3,7 @@ package fqueue
 import (
 	"os"
 	"syscall"
+	"unsafe"
 )
 
 type Reader struct {
@@ -60,8 +61,9 @@ func (b *Reader) rolling() (err error) {
 
 func (b *Reader) unmapper() error {
 	if len(b.ptr) > 0 {
-		if err := syscall.Munmap(b.ptr); err != nil {
-			return err
+		_, _, errno := syscall.Syscall(syscall.SYS_MUNMAP, uintptr(unsafe.Pointer(&b.ptr[0])), uintptr(len(b.ptr)), 0)
+		if errno != 0 {
+			return syscall.Errno(errno)
 		}
 	}
 	return nil
