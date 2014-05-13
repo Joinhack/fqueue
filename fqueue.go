@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"unsafe"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -53,6 +55,7 @@ type FQueue struct {
 	mSize         int
 	lastFlushTime int64
 	metaFd        *os.File
+	metaPtr       []byte
 	memQueue      *list.List
 	running       bool
 	qMutex        *sync.Mutex
@@ -109,17 +112,21 @@ func (q *FQueue) Push(p []byte) error {
 	q.FSize += (needSpace)
 	q.WriterOffset += needSpace
 	q.Writer.setBottom()
-
 	return err
 }
 
-func (q *FQueue) prepareQueueFile() {
+func (q *FQueue) prepareQueueFile(path string) {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
 	empty := make([]byte, 4096)
 	n := time.Now()
 	fmt.Println("prepared queue file")
 	for i := 0; i < q.Limit; {
 
-		q.metaFd.Write(empty)
+		file.Write(empty)
 		i += len(empty)
 		//file queue prepared callback.
 		if PrepareCall != nil {
@@ -152,8 +159,15 @@ func NewFQueue(path string) (fq *FQueue, err error) {
 	var st os.FileInfo
 	if st, err = os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
-			q.metaFd, err = os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
-			q.prepareQueueFile()
+			q.prepareQueueFile(path)
+			q.metaFd, err = os.OpenFile(path, os.O_RDWR, 0644)
+			if err != nil {
+				return
+			}
+			q.metaPtr, err = syscall.Mmap(int(q.metaFd.Fd()), 0, MetaSize, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+			if err != nil {
+				return
+			}
 			q.meta.ReaderOffset = MetaSize
 			q.meta.WriterOffset = MetaSize
 			q.meta.WriterBottom = q.meta.WriterOffset
@@ -197,6 +211,13 @@ func (q *FQueue) Close() error {
 	q.wg.Wait()
 	q.qMutex.Lock()
 	defer q.qMutex.Unlock()
+	q.dumpMeta(&q.meta)
+	if len(q.metaPtr) > 0 {
+		_, _, errno := syscall.Syscall(syscall.SYS_MUNMAP, uintptr(unsafe.Pointer(&q.metaPtr[0])), uintptr(len(q.metaPtr)), 0)
+		if errno != 0 {
+			return syscall.Errno(errno)
+		}
+	}
 	if err := q.metaFd.Close(); err != nil {
 		return err
 	}
@@ -224,17 +245,16 @@ func (q *FQueue) metaTask() {
 }
 
 func (q *FQueue) loadMeta(path string) error {
-	var buf [MetaSize]byte
 	var err error
 	q.metaFd, err = os.OpenFile(path, os.O_RDWR, 0644)
 	if err != nil {
 		return err
 	}
-	_, err = q.metaFd.Read(buf[:])
+	q.metaPtr, err = syscall.Mmap(int(q.metaFd.Fd()), 0, MetaSize, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 	if err != nil {
 		return err
 	}
-	p := buf[:]
+	p := q.metaPtr
 	offset := 0
 	if string(p[:len(magic)]) != magic {
 		return InvalidMeta
@@ -254,12 +274,9 @@ func (q *FQueue) loadMeta(path string) error {
 }
 
 func (q *FQueue) dumpMeta(meta *meta) error {
-	var buf [MetaSize]byte
-	var p = buf[:]
+	var p = q.metaPtr
 	var offset = 0
-	if _, err := q.metaFd.Seek(0, os.SEEK_SET); err != nil {
-		return err
-	}
+
 	copy(p[0:len(magic)], []byte(magic))
 	offset += len(magic)
 	binary.LittleEndian.PutUint64(p[offset:], uint64(meta.FSize))
@@ -271,9 +288,6 @@ func (q *FQueue) dumpMeta(meta *meta) error {
 	binary.LittleEndian.PutUint64(p[offset:], uint64(meta.WriterOffset))
 	offset += 8
 	binary.LittleEndian.PutUint64(p[offset:], uint64(meta.ReaderOffset))
-	if _, err := q.metaFd.Write(buf[:]); err != nil {
-		return err
-	}
 	return nil
 }
 
