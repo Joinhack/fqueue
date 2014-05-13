@@ -41,6 +41,7 @@ func BenchmarkRead(b *testing.B) {
 	if fq, err = NewFQueue("/tmp/fq_bench1.data"); err != nil {
 		panic(err)
 	}
+	fq.printMeta()
 	if fq == nil {
 		b.FailNow()
 		return

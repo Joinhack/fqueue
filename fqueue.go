@@ -56,7 +56,6 @@ type FQueue struct {
 	lastFlushTime int64
 	metaFd        *os.File
 	metaPtr       []byte
-	memQueue      *list.List
 	running       bool
 	qMutex        *sync.Mutex
 	wg            *sync.WaitGroup
@@ -152,7 +151,6 @@ func NewFQueue(path string) (fq *FQueue, err error) {
 	q := &FQueue{
 		qMutex:   &sync.Mutex{},
 		wg:       &sync.WaitGroup{},
-		memQueue: list.New(),
 	}
 	q.Limit = fileLimit
 	q.FSize = 0
