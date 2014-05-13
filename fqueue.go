@@ -1,7 +1,6 @@
 package fqueue
 
 import (
-	"container/list"
 	"encoding/binary"
 	"errors"
 	"fmt"
