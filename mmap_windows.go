@@ -1,13 +1,17 @@
 package fqueue
 
-// +build windows
-
+//Not support now
 import (
 	"errors"
 	"os"
 	"sync"
 	"syscall"
 	"unsafe"
+)
+
+const (
+	PageSize = 65536
+	MetaSize = 65536
 )
 
 var handleLock sync.Mutex
@@ -40,7 +44,6 @@ func mmap(fd uintptr, off int64, l, inprot int) (sli []byte, err error) {
 		l, c int
 	}{addr, l, l}
 	sli = *(*[]byte)(unsafe.Pointer(&header))
-	println(11)
 	return sli, nil
 }
 

@@ -1,4 +1,3 @@
-
 // +build darwin freebsd linux netbsd openbsd
 
 package fqueue
@@ -6,6 +5,11 @@ package fqueue
 import (
 	"syscall"
 	"unsafe"
+)
+
+const (
+	PageSize = 4096
+	MetaSize = 4096
 )
 
 func mmap(fd uintptr, off int64, l, inprot int) ([]byte, error) {

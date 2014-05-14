@@ -10,8 +10,6 @@ import (
 )
 
 const (
-	PageSize      = 4096
-	MetaSize      = 4096
 	readTryTimes  = 3
 	writeTryTimes = 3
 )

@@ -13,7 +13,7 @@ import (
 func TestFQueue(t *testing.T) {
 	var fq *FQueue
 	var err error
-	FileLimit = 4096 * 2
+	FileLimit = PageSize * 2
 	fpath := filepath.Join(os.TempDir(), "fq1.data")
 	os.Remove(fpath)
 	if fq, err = NewFQueue(fpath); err != nil {
@@ -39,7 +39,7 @@ func TestFQueue(t *testing.T) {
 					time.Sleep(1 * time.Millisecond)
 					continue
 				}
-				t.Fail()
+				panic(err)
 			}
 			i++
 		}
