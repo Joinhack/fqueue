@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"unsafe"
 	"sync"
 	"syscall"
 	"time"
+	"unsafe"
 )
 
 const (
@@ -16,6 +16,10 @@ const (
 	MetaSize      = 4096
 	readTryTimes  = 3
 	writeTryTimes = 3
+)
+
+var (
+	DefaultDumpFlag byte = 0
 )
 
 var (
@@ -29,6 +33,7 @@ var (
 )
 
 type meta struct {
+	DumpFlag     byte //0 immediately, 1 dump meta every second
 	WriterOffset int
 	ReaderOffset int
 	WriterBottom int
@@ -54,6 +59,8 @@ type FQueue struct {
 	lastFlushTime int64
 	metaFd        *os.File
 	metaPtr       []byte
+	running       bool
+	wg            *sync.WaitGroup
 	qMutex        *sync.Mutex
 }
 
@@ -107,7 +114,9 @@ func (q *FQueue) Push(p []byte) error {
 	q.FSize += (needSpace)
 	q.WriterOffset += needSpace
 	q.Writer.setBottom()
-	q.dumpMeta(&q.meta)
+	if q.DumpFlag == 0 {
+		q.dumpMeta(&q.meta)
+	}
 	return err
 }
 
@@ -146,10 +155,13 @@ func NewFQueue(path string) (fq *FQueue, err error) {
 	fileLimit := limit + MetaSize
 
 	q := &FQueue{
-		qMutex:   &sync.Mutex{},
+		qMutex:  &sync.Mutex{},
+		wg:      &sync.WaitGroup{},
+		running: true,
 	}
 	q.Limit = fileLimit
 	q.FSize = 0
+	q.DumpFlag = DefaultDumpFlag
 	var st os.FileInfo
 	if st, err = os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
@@ -194,10 +206,32 @@ func NewFQueue(path string) (fq *FQueue, err error) {
 		return
 	}
 	fq = q
+	if fq.DumpFlag == 1 {
+		fq.wg.Add(1)
+		go fq.metaTask()
+	}
 	return
 }
 
+func (q *FQueue) metaTask() {
+	for q.running {
+		select {
+		case <-time.After(1 * time.Second):
+		}
+		q.qMutex.Lock()
+		var meta meta
+		meta = q.meta
+		q.qMutex.Unlock()
+		q.dumpMeta(&meta)
+	}
+	q.wg.Done()
+}
+
 func (q *FQueue) Close() error {
+	if q.DumpFlag == 1 {
+		q.running = false
+		q.wg.Wait()
+	}
 	q.qMutex.Lock()
 	defer q.qMutex.Unlock()
 	q.dumpMeta(&q.meta)
@@ -219,7 +253,6 @@ func (q *FQueue) Close() error {
 	return nil
 }
 
-
 func (q *FQueue) loadMeta(path string) error {
 	var err error
 	q.metaFd, err = os.OpenFile(path, os.O_RDWR, 0644)
@@ -231,41 +264,39 @@ func (q *FQueue) loadMeta(path string) error {
 		return err
 	}
 	p := q.metaPtr
-	offset := 0
 	if string(p[:len(magic)]) != magic {
 		return InvalidMeta
 	}
-
-	offset += len(magic)
-	q.meta.FSize = int(binary.LittleEndian.Uint64(p[offset:]))
-	offset += 8
-	q.meta.Limit = int(binary.LittleEndian.Uint64(p[offset:]))
-	offset += 8
-	q.meta.WriterBottom = int(binary.LittleEndian.Uint64(p[offset:]))
-	offset += 8
-	q.meta.WriterOffset = int(binary.LittleEndian.Uint64(p[offset:]))
-	offset += 8
-	q.meta.ReaderOffset = int(binary.LittleEndian.Uint64(p[offset:]))
+	p = p[len(magic):]
+	q.meta.DumpFlag = p[0]
+	p = p[1:]
+	q.meta.FSize = int(binary.LittleEndian.Uint64(p))
+	p = p[8:]
+	q.meta.Limit = int(binary.LittleEndian.Uint64(p))
+	p = p[8:]
+	q.meta.WriterBottom = int(binary.LittleEndian.Uint64(p))
+	p = p[8:]
+	q.meta.WriterOffset = int(binary.LittleEndian.Uint64(p))
+	p = p[8:]
+	q.meta.ReaderOffset = int(binary.LittleEndian.Uint64(p))
 	return nil
 }
 
 func (q *FQueue) dumpMeta(meta *meta) error {
-	var buf [MetaSize]byte
-	var p = buf[:]
-	var offset = 0
-
-	copy(p[0:len(magic)], []byte(magic))
-	offset += len(magic)
-	binary.LittleEndian.PutUint64(p[offset:], uint64(meta.FSize))
-	offset += 8
-	binary.LittleEndian.PutUint64(p[offset:], uint64(meta.Limit))
-	offset += 8
-	binary.LittleEndian.PutUint64(p[offset:], uint64(meta.WriterBottom))
-	offset += 8
-	binary.LittleEndian.PutUint64(p[offset:], uint64(meta.WriterOffset))
-	offset += 8
-	binary.LittleEndian.PutUint64(p[offset:], uint64(meta.ReaderOffset))
-	copy(q.metaPtr, p)
+	var p = q.metaPtr
+	copy(p, []byte(magic))
+	p = p[len(magic):]
+	p[0] = byte(meta.DumpFlag)
+	p = p[1:]
+	binary.LittleEndian.PutUint64(p, uint64(meta.FSize))
+	p = p[8:]
+	binary.LittleEndian.PutUint64(p, uint64(meta.Limit))
+	p = p[8:]
+	binary.LittleEndian.PutUint64(p, uint64(meta.WriterBottom))
+	p = p[8:]
+	binary.LittleEndian.PutUint64(p, uint64(meta.WriterOffset))
+	p = p[8:]
+	binary.LittleEndian.PutUint64(p, uint64(meta.ReaderOffset))
 	return nil
 }
 
@@ -316,6 +347,8 @@ func (q *FQueue) Pop() (p []byte, err error) {
 
 	q.ReaderOffset += int(2 + l)
 	q.FSize -= int(2 + l)
-	q.dumpMeta(&q.meta)
+	if q.DumpFlag == 0 {
+		q.dumpMeta(&q.meta)
+	}
 	return
 }
