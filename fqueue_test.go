@@ -13,8 +13,9 @@ func TestFQueue(t *testing.T) {
 	var fq *FQueue
 	var err error
 	FileLimit = 4096 * 2
-	os.Remove("/tmp/fq1.data")
-	if fq, err = NewFQueue("/tmp/fq1.data"); err != nil {
+	fpath := "/tmp/fq1.data"
+	os.Remove(fpath)
+	if fq, err = NewFQueue(fpath); err != nil {
 		panic(err)
 	}
 	var wg = &sync.WaitGroup{}
@@ -76,5 +77,5 @@ func TestFQueue(t *testing.T) {
 	endTime := time.Now()
 	t.Log("total read write bytes:", total, "speed(bytes/s):", total/int(endTime.Unix()-startTime.Unix()), ",speed(bytes/ms):", total/int((endTime.UnixNano()-startTime.UnixNano())/1000000))
 	fq.Close()
-	os.Remove("/tmp/fq1.data")
+	os.Remove(fpath)
 }

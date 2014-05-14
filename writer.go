@@ -2,8 +2,6 @@ package fqueue
 
 import (
 	"os"
-	"syscall"
-	"unsafe"
 )
 
 type Writer struct {
@@ -37,10 +35,7 @@ func (b *Writer) Close() error {
 
 func (b *Writer) unmapper() error {
 	if len(b.ptr) > 0 {
-		_, _, errno := syscall.Syscall(syscall.SYS_MUNMAP, uintptr(unsafe.Pointer(&b.ptr[0])), uintptr(len(b.ptr)), 0)
-		if errno != 0 {
-			return syscall.Errno(errno)
-		}
+		return unmap(b.ptr)
 	}
 	return nil
 }
@@ -49,7 +44,7 @@ func (b *Writer) mapper() (err error) {
 	if err = b.unmapper(); err != nil {
 		return
 	}
-	b.ptr, err = syscall.Mmap(int(b.fd.Fd()), b.offset, PageSize, syscall.PROT_WRITE, syscall.MAP_SHARED)
+	b.ptr, err = mmap(b.fd.Fd(), b.offset, PageSize, WRITE)
 	if err != nil {
 		return err
 	}
