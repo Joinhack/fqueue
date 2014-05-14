@@ -1,3 +1,6 @@
+
+// +build darwin freebsd linux netbsd openbsd
+
 package fqueue
 
 import (

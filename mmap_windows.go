@@ -1,5 +1,7 @@
 package fqueue
 
+// +build windows
+
 import (
 	"errors"
 	"os"
