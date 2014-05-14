@@ -1,4 +1,4 @@
-fqueue
+Fqueue
 ==================================
 The fqueue for golang 
 
