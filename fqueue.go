@@ -250,7 +250,8 @@ func (q *FQueue) loadMeta(path string) error {
 }
 
 func (q *FQueue) dumpMeta(meta *meta) error {
-	var p = q.metaPtr
+	var buf [MetaSize]byte
+	var p = buf[:]
 	var offset = 0
 
 	copy(p[0:len(magic)], []byte(magic))
@@ -264,6 +265,7 @@ func (q *FQueue) dumpMeta(meta *meta) error {
 	binary.LittleEndian.PutUint64(p[offset:], uint64(meta.WriterOffset))
 	offset += 8
 	binary.LittleEndian.PutUint64(p[offset:], uint64(meta.ReaderOffset))
+	copy(q.metaPtr, p)
 	return nil
 }
 
