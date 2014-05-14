@@ -15,6 +15,16 @@ Install
 2. Install the peony. 
 		$ go get github.com/joinhack/fqueue
 
+Setting
+==================================
+Before create a queue.
+
+fqueue.FileLimit: set the file size
+fqueue.DefaultDumpFlag: set the meta data dump strategy.
+        0 dump meta immediately, this is the default value
+        1 dump meta per second.
+
+
 Test
 ==================================
 $ go test -bench="." -benchtime=0s
