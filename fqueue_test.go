@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"path/filepath"
 	"time"
 )
 
@@ -13,7 +14,7 @@ func TestFQueue(t *testing.T) {
 	var fq *FQueue
 	var err error
 	FileLimit = 4096 * 2
-	fpath := "/tmp/fq1.data"
+	fpath := filepath.Join(os.TempDir(), "fq1.data")
 	os.Remove(fpath)
 	if fq, err = NewFQueue(fpath); err != nil {
 		panic(err)

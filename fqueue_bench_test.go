@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -11,9 +12,10 @@ var fq *FQueue
 
 func init() {
 	var err error
-	os.Remove("/tmp/fq_bench1.data")
+	fpath := filepath.Join(os.TempDir(), "fq1_benchmark.data")
+	os.Remove(fpath)
 	FileLimit = 1000000 * (256 + 8)
-	if fq, err = NewFQueue("/tmp/fq_bench1.data"); err != nil {
+	if fq, err = NewFQueue(fpath); err != nil {
 		panic(err)
 	}
 }
