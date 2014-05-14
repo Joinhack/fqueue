@@ -51,13 +51,10 @@ type FQueue struct {
 	meta
 	*Writer
 	*Reader
-	mSize         int
 	lastFlushTime int64
 	metaFd        *os.File
 	metaPtr       []byte
-	running       bool
 	qMutex        *sync.Mutex
-	wg            *sync.WaitGroup
 }
 
 func (q *FQueue) getMeta() *meta {
@@ -110,6 +107,7 @@ func (q *FQueue) Push(p []byte) error {
 	q.FSize += (needSpace)
 	q.WriterOffset += needSpace
 	q.Writer.setBottom()
+	q.dumpMeta(&q.meta)
 	return err
 }
 
@@ -149,7 +147,6 @@ func NewFQueue(path string) (fq *FQueue, err error) {
 
 	q := &FQueue{
 		qMutex:   &sync.Mutex{},
-		wg:       &sync.WaitGroup{},
 	}
 	q.Limit = fileLimit
 	q.FSize = 0
@@ -197,15 +194,10 @@ func NewFQueue(path string) (fq *FQueue, err error) {
 		return
 	}
 	fq = q
-	fq.running = true
-	q.wg.Add(1)
-	go fq.metaTask()
 	return
 }
 
 func (q *FQueue) Close() error {
-	q.running = false
-	q.wg.Wait()
 	q.qMutex.Lock()
 	defer q.qMutex.Unlock()
 	q.dumpMeta(&q.meta)
@@ -227,19 +219,6 @@ func (q *FQueue) Close() error {
 	return nil
 }
 
-func (q *FQueue) metaTask() {
-	for q.running {
-		select {
-		case <-time.After(1 * time.Second):
-		}
-		q.qMutex.Lock()
-		var meta meta
-		meta = q.meta
-		q.qMutex.Unlock()
-		q.dumpMeta(&meta)
-	}
-	q.wg.Done()
-}
 
 func (q *FQueue) loadMeta(path string) error {
 	var err error
@@ -335,5 +314,6 @@ func (q *FQueue) Pop() (p []byte, err error) {
 
 	q.ReaderOffset += int(2 + l)
 	q.FSize -= int(2 + l)
+	q.dumpMeta(&q.meta)
 	return
 }
