@@ -1,6 +1,7 @@
-Fqueue
+FQueue
 ==================================
-The fqueue for golang 
+The fqueue for golang
+(Now don't support windows.)
 
 
 Features
@@ -36,7 +37,6 @@ Test Result
 BenchmarkPush	 1000000	       965 ns/op	  98.40 MB/s
 
 BenchmarkPop	 1000000	       588 ns/op	 161.50 MB/s
-
 
 
 
