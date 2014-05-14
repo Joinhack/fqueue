@@ -42,7 +42,7 @@ type meta struct {
 }
 
 var (
-	FileLimit   = 1024 * 1024 * 1024
+	FileLimit   = 1024 * 1024 * 50
 	PrepareCall func(int)
 )
 
