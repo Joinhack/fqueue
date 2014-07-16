@@ -89,7 +89,7 @@ func NewWriter(path string, q *FQueue) (w *Writer, err error) {
 	if w.WriterOffset%PageSize == 0 {
 		w.offset = int64(w.WriterOffset)
 	} else {
-		offset := (w.WriterOffset/PageSize + 1) * PageSize
+		offset := (w.WriterOffset/PageSize) * PageSize
 		if offset > q.Limit {
 			offset = q.Limit
 		}

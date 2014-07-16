@@ -60,12 +60,12 @@ type FQueue struct {
 	qMutex        *sync.Mutex
 }
 
-func (q *FQueue) getMeta() *meta {
+func (q *FQueue) GetMeta() *meta {
 	return &q.meta
 }
 
 func (q *FQueue) printMeta() {
-	m := q.getMeta()
+	m := q.GetMeta()
 	println("File Contents:", m.FSize)
 	println("Limit:", m.Limit)
 	println("ReaderOffset:", m.ReaderOffset)

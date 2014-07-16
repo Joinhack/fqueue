@@ -47,6 +47,9 @@ func BenchmarkPop(b *testing.B) {
 			b.FailNow()
 			return
 		}
+		if len(p) <= 4 {
+			panic("shit")
+		}
 		b.SetBytes(int64(len(p)))
 		c := int(binary.LittleEndian.Uint32(p))
 		l := int(binary.LittleEndian.Uint32(p[4:]))

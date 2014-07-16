@@ -31,7 +31,7 @@ func NewReader(path string, q *FQueue) (r *Reader, err error) {
 	if r.ReaderOffset%PageSize == 0 {
 		r.offset = int64(r.ReaderOffset)
 	} else {
-		offset := (r.ReaderOffset/PageSize + 1) * PageSize
+		offset := (r.ReaderOffset/PageSize) * PageSize
 		if offset > q.Limit {
 			offset = q.Limit
 		}
