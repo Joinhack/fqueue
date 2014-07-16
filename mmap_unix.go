@@ -27,6 +27,14 @@ func mmap(fd uintptr, off int64, l, inprot int) ([]byte, error) {
 	return b, nil
 }
 
+func msync(addr, len uintptr) error {
+	_, _, errno := syscall.Syscall(syscall.SYS_MSYNC, addr, len, syscall.MS_SYNC)
+	if errno != 0 {
+		return syscall.Errno(errno)
+	}
+	return nil
+}
+
 func unmap(p []byte) error {
 	_, _, errno := syscall.Syscall(syscall.SYS_MUNMAP, uintptr(unsafe.Pointer(&p[0])), uintptr(len(p)), 0)
 	if errno != 0 {

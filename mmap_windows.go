@@ -47,6 +47,11 @@ func mmap(fd uintptr, off int64, l, inprot int) (sli []byte, err error) {
 	return sli, nil
 }
 
+func msync(addr, len uintptr) error {
+	errno := syscall.FlushViewOfFile(addr, len)
+	return os.NewSyscallError("FlushViewOfFile", errno)
+}
+
 func unmap(p []byte) error {
 	addr := uintptr(unsafe.Pointer(&p[0]))
 	syscall.FlushViewOfFile(addr, uintptr(len(p)))
