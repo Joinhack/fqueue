@@ -54,7 +54,7 @@ func TestFQueue(t *testing.T) {
 					time.Sleep(1 * time.Millisecond)
 					continue
 				}
-				fq.printMeta()
+				PrintMeta(fq.meta)
 				panic(err)
 			}
 			if len(p) >= 8 {

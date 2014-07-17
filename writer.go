@@ -2,6 +2,7 @@ package fqueue
 
 import (
 	"os"
+	"unsafe"
 )
 
 type Writer struct {
@@ -38,6 +39,15 @@ func (b *Writer) unmapper() error {
 		return unmap(b.ptr)
 	}
 	return nil
+}
+
+func (b *Writer) sync() (err error) {
+	h := (*struct {
+		ptr  uintptr
+		l, c int
+	})(unsafe.Pointer(&b.ptr))
+	err = msync(h.ptr, uintptr(h.l))
+	return
 }
 
 func (b *Writer) mapper() (err error) {
