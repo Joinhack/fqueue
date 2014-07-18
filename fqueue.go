@@ -31,7 +31,16 @@ var magicLen int = len(magic)
 
 var (
 	FileLimit   = 1024 * 1024 * 50
-	PrepareCall func(int, int)
+	PrepareCall func(int, int) = func(limit,now int){
+		if now == 4096 {
+			fmt.Print(".")
+		} else if now%(1024*1024*5) == 0 {
+			fmt.Print(".")
+		}
+		if now == limit {
+			fmt.Println("100%")
+		}
+	}
 )
 
 type Queue interface {
@@ -80,7 +89,6 @@ func prepareQueueFile(path string, limit int) {
 	n := time.Now()
 	fmt.Println("prepared queue file")
 	for i := 0; i < limit; {
-
 		file.Write(empty)
 		i += len(empty)
 		//file queue prepared callback.
