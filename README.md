@@ -1,7 +1,6 @@
 FQueue
 ==================================
 The fqueue for golang.
-(Now don't support windows.)
 
 
 Features
@@ -9,6 +8,7 @@ Features
 * Fast
 * Persistence
 * Rolling File
+* Support Unix, Windows.
 
 Install
 ==================================

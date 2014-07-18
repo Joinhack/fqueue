@@ -16,7 +16,7 @@ func init() {
 	println(fpath)
 	os.Remove(fpath)
 	var fq *FQueue
-	FileLimit = 1000000 * (256 + 8)
+	FileLimit = 1000000 * (256 + 8) 
 	if fq, err = NewFQueue(fpath); err != nil {
 		panic(err)
 	}
