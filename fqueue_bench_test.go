@@ -33,13 +33,14 @@ func BenchmarkPush(b *testing.B) {
 		panic(err)
 	}
 	defer fq.Close()
+	ptr := make([]byte, 256 + 8)
+	for i := 0; i < 256 + 8; i++ {
+		ptr[i] = 'T'
+	}
 	for i := 0; i < b.N; i++ {
 		l := rand.Intn(256) + 8
-		p = make([]byte, l)
+		p = ptr[:l]
 		b.SetBytes(int64(l))
-		for j := 8; j < l; j++ {
-			p[j] = byte(l%255)
-		}
 		binary.LittleEndian.PutUint32(p, uint32(i))
 		binary.LittleEndian.PutUint32(p[4:], uint32(l))
 
