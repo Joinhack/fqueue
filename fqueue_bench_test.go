@@ -13,6 +13,11 @@ var fpath string
 func init() {
 	var err error
 	fpath = filepath.Join(os.TempDir(), "fq1_benchmark.data")
+	PrepareCall = func(limit,now int){
+		if now%(1024*5) == 0 {
+			println(now, "already created.")
+		}
+	}
 	println(fpath)
 	os.Remove(fpath)
 	var fq *FQueue

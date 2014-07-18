@@ -12,11 +12,9 @@ import (
 
 var (
 	NoSpace          = errors.New("no space error")
-	MunMapErr        = errors.New("munmap error")
 	QueueEmpty       = errors.New("queue is empty")
 	InvalidMeta      = errors.New("invalid meta")
 	MustBeFile       = errors.New("must be file")
-	ReachMaxTryTimes = errors.New("reach max retry times for read/write")
 	magic            = "JFQ"
 )
 

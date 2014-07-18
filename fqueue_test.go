@@ -16,6 +16,7 @@ func TestFQueue(t *testing.T) {
 	FileLimit = PageSize * 2
 	fpath := filepath.Join(os.TempDir(), "fq1.data")
 	os.Remove(fpath)
+	
 	if fq, err = NewFQueue(fpath); err != nil {
 		panic(err)
 	}
