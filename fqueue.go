@@ -72,9 +72,9 @@ func PrintMeta(m *meta) {
 }
 
 func (q *FQueue) PrintMeta() {
-	fmt.Println("--------dump meta--------")
+	fmt.Println("--------meta--------")
 	PrintMeta(q.meta)
-	fmt.Println("--------dump meta1--------")
+	fmt.Println("--------meta1--------")
 	PrintMeta(q.meta1)
 }
 
@@ -135,7 +135,7 @@ func (q *FQueue) Push(p []byte) error {
 		q.Contents < q.Limit {
 		q.WriterBottom = q.WriterOffset
 	}
-	q.dumpMeta(q.meta)
+	q.mergeMeta(q.meta)
 	return err
 }
 
@@ -185,7 +185,7 @@ func NewFQueue(path string) (fq *FQueue, err error) {
 			q.meta.ReaderOffset = MetaSize
 			q.meta.WriterOffset = MetaSize
 			q.meta.WriterBottom = q.meta.WriterOffset
-			q.dumpMeta(q.meta)
+			q.mergeMeta(q.meta)
 			copy(q.ptr, []byte(magic))
 			if err != nil {
 				return
@@ -214,7 +214,7 @@ func (q *FQueue) Close() error {
 	q.qMutex.Lock()
 	defer q.qMutex.Unlock()
 
-	q.dumpMeta(q.meta)
+	q.mergeMeta(q.meta)
 
 	if len(q.ptr) > 0 {
 		if err := unmap(q.ptr); err != nil {
@@ -250,10 +250,8 @@ func (q *FQueue) loadMeta(path string, size int64) error {
 	return nil
 }
 
-func (q *FQueue) dumpMeta(meta *meta) error {
-	var p = q.ptr
-	p = p[magicLen:]
-	*q.meta1 = *q.meta
+func (q *FQueue) mergeMeta(meta *meta) error {
+	*q.meta1 = *q.meta	
 	return nil
 }
 
@@ -278,6 +276,6 @@ func (q *FQueue) Pop() (p []byte, err error) {
 
 	q.ReaderOffset += int(2 + l)
 	q.Contents -= int(2 + l)
-	q.dumpMeta(q.meta)
+	q.mergeMeta(q.meta)
 	return
 }
