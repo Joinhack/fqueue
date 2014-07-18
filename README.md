@@ -40,4 +40,5 @@ Test Result
 ==================================
 
 BenchmarkPush	 1000000	       743 ns/op	 158.78 MB/s
+
 BenchmarkPop	 1000000	       591 ns/op	 199.61 MB/s
