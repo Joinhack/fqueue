@@ -57,7 +57,6 @@ type FQueue struct {
 	metaFd        *os.File
 	metaPtr       []byte
 	running       bool
-	wg            *sync.WaitGroup
 	qMutex        *sync.Mutex
 }
 
@@ -159,7 +158,6 @@ func NewFQueue(path string) (fq *FQueue, err error) {
 
 	q := &FQueue{
 		qMutex:  &sync.Mutex{},
-		wg:      &sync.WaitGroup{},
 		running: true,
 	}
 
