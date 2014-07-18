@@ -13,7 +13,8 @@ var fpath string
 func init() {
 	var err error
 	fpath = filepath.Join(os.TempDir(), "fq1_benchmark.data")
-	os.Remove(fpath)
+	println(fpath)
+	// os.Remove(fpath)
 	var fq *FQueue
 	FileLimit = 1000000 * (256 + 8)
 	if fq, err = NewFQueue(fpath); err != nil {
@@ -46,6 +47,7 @@ func BenchmarkPush(b *testing.B) {
 			b.Error(err)
 			b.FailNow()
 		}
+		println(i)
 	}
 	
 }
