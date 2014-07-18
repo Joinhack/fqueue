@@ -11,11 +11,11 @@ import (
 )
 
 var (
-	NoSpace          = errors.New("no space error")
-	QueueEmpty       = errors.New("queue is empty")
-	InvalidMeta      = errors.New("invalid meta")
-	MustBeFile       = errors.New("must be file")
-	magic            = "JFQ"
+	NoSpace     = errors.New("no space error")
+	QueueEmpty  = errors.New("queue is empty")
+	InvalidMeta = errors.New("invalid meta")
+	MustBeFile  = errors.New("must be file")
+	magic       = "JFQ"
 )
 
 type meta struct {
@@ -30,8 +30,8 @@ var metaSize uintptr = unsafe.Sizeof(meta{})
 var magicLen int = len(magic)
 
 var (
-	FileLimit   = 1024 * 1024 * 50
-	PrepareCall func(int, int) = func(limit,now int){
+	FileLimit                  = 1024 * 1024 * 50
+	PrepareCall func(int, int) = func(limit, now int) {
 		if now == 4096 {
 			fmt.Print(".")
 		} else if now%(1024*1024*5) == 0 {
@@ -78,7 +78,6 @@ func (q *FQueue) PrintMeta() {
 	PrintMeta(q.meta1)
 }
 
-
 func prepareQueueFile(path string, limit int) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
@@ -113,10 +112,10 @@ func (q *FQueue) Push(p []byte) error {
 	if needSpace+int(q.Contents) > int(q.Limit-MetaSize) {
 		return NoSpace
 	}
-	if (q.WriterOffset < q.WriterBottom) && (q.WriterOffset+needSpace >= q.ReaderOffset) {
+	if (q.WriterOffset < q.WriterBottom) &&
+		(q.WriterOffset+needSpace >= q.ReaderOffset) {
 		return NoSpace
 	}
-
 	if int(q.WriterOffset+needSpace) >= q.Limit {
 		//origin: q.Limit-q.WriterBottom+needSpace+q.Contents < q.Limit-MetaSize
 		if needSpace+q.Contents-q.WriterBottom < -MetaSize {
@@ -131,7 +130,9 @@ func (q *FQueue) Push(p []byte) error {
 	q.Contents += (needSpace)
 	q.WriterOffset += needSpace
 	//q.Writer.setBottom()
-	if q.ReaderOffset < q.WriterOffset && q.WriterOffset > q.WriterBottom && q.Contents < q.Limit {
+	if q.ReaderOffset < q.WriterOffset &&
+		q.WriterOffset > q.WriterBottom &&
+		q.Contents < q.Limit {
 		q.WriterBottom = q.WriterOffset
 	}
 	q.dumpMeta(q.meta)
@@ -264,7 +265,8 @@ func (q *FQueue) Pop() (p []byte, err error) {
 		return
 	}
 
-	if q.ReaderOffset == q.WriterBottom && q.WriterOffset < q.WriterBottom {
+	if q.ReaderOffset == q.WriterBottom &&
+		q.WriterOffset < q.WriterBottom {
 		q.WriterBottom = q.WriterOffset
 		q.ReaderOffset = MetaSize
 	}

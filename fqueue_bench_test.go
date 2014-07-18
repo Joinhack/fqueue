@@ -16,7 +16,7 @@ func init() {
 	println(fpath)
 	os.Remove(fpath)
 	var fq *FQueue
-	FileLimit = 1000000 * (256 + 8) 
+	FileLimit = 1024*1024*512
 	if fq, err = NewFQueue(fpath); err != nil {
 		panic(err)
 	}
@@ -24,7 +24,7 @@ func init() {
 }
 
 func BenchmarkPush(b *testing.B) {
-	b.N = 1000000
+	b.N = 3000000
 	var err error
 	var p []byte
 	var fq *FQueue
@@ -53,7 +53,7 @@ func BenchmarkPush(b *testing.B) {
 }
 
 func BenchmarkPop(b *testing.B) {
-	b.N = 1000000
+	b.N = 3000000
 	var err error
 	var p []byte
 	var fq *FQueue
