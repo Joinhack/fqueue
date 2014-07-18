@@ -31,7 +31,6 @@ type meta struct {
 	WriterBottom int
 	Limit        int
 	FSize        int
-	Sum          uint32
 }
 
 var metaSize uintptr = unsafe.Sizeof(meta{})
@@ -70,7 +69,6 @@ func PrintMeta(m *meta) {
 	println("ReaderOffset:", m.ReaderOffset)
 	println("WriterOffset:", m.WriterOffset)
 	println("WriterBottom:", m.WriterBottom)
-	println("Crc32 Sum:", m.Sum)
 }
 
 func (q *FQueue) Push(p []byte) error {
@@ -217,6 +215,14 @@ func NewFQueue(path string) (fq *FQueue, err error) {
 func (q *FQueue) Close() error {
 	q.qMutex.Lock()
 	defer q.qMutex.Unlock()
+
+	if err := q.Writer.Close(); err != nil {
+		return err
+	}
+	if err := q.Reader.Close(); err != nil {
+		return err
+	}
+
 	q.dumpMeta(q.meta)
 
 	if len(q.metaPtr) > 0 {
@@ -227,12 +233,7 @@ func (q *FQueue) Close() error {
 	if err := q.metaFd.Close(); err != nil {
 		return err
 	}
-	if err := q.Writer.Close(); err != nil {
-		return err
-	}
-	if err := q.Reader.Close(); err != nil {
-		return err
-	}
+	
 	return nil
 }
 
