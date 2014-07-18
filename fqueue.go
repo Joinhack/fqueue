@@ -221,6 +221,7 @@ func (q *FQueue) Close() error {
 			return err
 		}
 	}
+	q.fd.Sync()
 	if err := q.fd.Close(); err != nil {
 		return err
 	}
