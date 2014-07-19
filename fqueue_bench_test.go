@@ -16,7 +16,7 @@ func init() {
 	println(fpath)
 	os.Remove(fpath)
 	var fq *FQueue
-	FileLimit = 1024*1024*512
+	FileLimit = 1024*1024*256
 	if fq, err = NewFQueue(fpath); err != nil {
 		panic(err)
 	}
@@ -24,7 +24,7 @@ func init() {
 }
 
 func BenchmarkPush(b *testing.B) {
-	b.N = 3000000
+	b.N = 1000000
 	var err error
 	var p []byte
 	var fq *FQueue
@@ -37,6 +37,8 @@ func BenchmarkPush(b *testing.B) {
 	for i := 0; i < 256 + 8; i++ {
 		ptr[i] = 'T'
 	}
+	b.ResetTimer()
+	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		l := rand.Intn(256) + 8
 		p = ptr[:l]
@@ -49,11 +51,12 @@ func BenchmarkPush(b *testing.B) {
 			b.FailNow()
 		}
 	}
+	b.StopTimer()
 	
 }
 
 func BenchmarkPop(b *testing.B) {
-	b.N = 3000000
+	b.N = 1000000
 	var err error
 	var p []byte
 	var fq *FQueue
@@ -61,6 +64,8 @@ func BenchmarkPop(b *testing.B) {
 		panic(err)
 	}
 	defer fq.Close()
+	b.ResetTimer()
+	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		if p, err = fq.Pop(); err != nil {
 			b.FailNow()
@@ -73,4 +78,5 @@ func BenchmarkPop(b *testing.B) {
 			b.FailNow()
 		}
 	}
+	b.StopTimer()
 }
