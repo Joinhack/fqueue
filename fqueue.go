@@ -256,7 +256,6 @@ func (q *FQueue) Close() error {
 	if err := q.fd.Close(); err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -274,16 +273,17 @@ func (q *FQueue) loadMeta(path string) error {
 	if n != MetaSize {
 		return errors.New(fmt.Sprintf("hope read %d bytes, but read %d bytes.", MetaSize, n))
 	}
+	//find the mmap size info in the meta.
 	readonlyMeta := metaMapper(uintptr(magicLen), metaSli)
 
 	if string(metaSli[:magicLen]) != magic {
 		return InvalidMeta
 	}
 
+	//reset file.
 	if _, err = q.fd.Seek(0, os.SEEK_SET); err != nil {
 		return err
 	}
-
 	q.ptr, err = mmap(q.fd.Fd(), 0, readonlyMeta.Limit, RDWR)
 	if err != nil {
 		return err
@@ -293,6 +293,8 @@ func (q *FQueue) loadMeta(path string) error {
 	}
 	q.meta = metaMapper(uintptr(magicLen), q.ptr)
 	q.meta1 = metaMapper(uintptr(magicLen)+metaStructSize, q.ptr)
+
+	// if don't finished the meta backup, use the backup meta.
 	if *q.meta1 != *q.meta {
 		*q.meta = *q.meta1
 	}
@@ -308,6 +310,8 @@ func (q *FQueue) Pop() (p []byte, err error) {
 		return
 	}
 
+	//when the reader offset reach the bottom, rolling the reader offset and
+	//set the bottom to the writer offset.
 	if q.ReaderOffset == q.WriterBottom &&
 		q.WriterOffset < q.WriterBottom {
 		q.WriterBottom = q.WriterOffset
@@ -317,8 +321,14 @@ func (q *FQueue) Pop() (p []byte, err error) {
 	l = binary.LittleEndian.Uint16(q.ptr[q.ReaderOffset:])
 	p = make([]byte, l)
 	copy(p, q.ptr[q.ReaderOffset+2:])
+
+	//set current fqueue is reading
 	q.Mask |= RDMask
+
+	//set the reader offset
 	q.ReaderOffset += int(2 + l)
+
+	//calc the content in fqueue
 	q.Contents -= int(2 + l)
 	
 	//merge meta
