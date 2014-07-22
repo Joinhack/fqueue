@@ -134,9 +134,11 @@ func (q *FQueue) Push(p []byte) error {
 		(q.WriterOffset+needSpace >= q.ReaderOffset) {
 		return NoSpace
 	}
+
 	if int(q.WriterOffset+needSpace) >= q.Limit {
-		//origin: q.Limit-q.WriterBottom+needSpace+q.Contents < q.Limit-MetaSize
-		if needSpace+q.Contents-q.WriterBottom < -MetaSize {
+		//if add the item will to exceed the bottom of file(the limit) and 
+		//the free space is more than need space, rolling.
+		if q.ReaderOffset - MetaSize > needSpace {
 			//rolling
 			q.WriterOffset = MetaSize
 		} else {
@@ -145,8 +147,11 @@ func (q *FQueue) Push(p []byte) error {
 	}
 	binary.LittleEndian.PutUint16(q.ptr[q.WriterOffset:], uint16(plen))
 	copy(q.ptr[q.WriterOffset+2:], p)
+	//set write mask
 	q.Mask |= WRMask
+	//set contents
 	q.Contents += (needSpace)
+	//set writer offset
 	q.WriterOffset += needSpace
 	//set bottom.
 	if q.ReaderOffset < q.WriterOffset &&
