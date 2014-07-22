@@ -11,7 +11,7 @@ import (
 )
 
 func TestFQueue(t *testing.T) {
-	var fq *FQueue
+	var fq Queue
 	var err error
 	FileLimit = PageSize * 2
 	fpath := filepath.Join(os.TempDir(), "fq1.data")
@@ -55,7 +55,6 @@ func TestFQueue(t *testing.T) {
 					time.Sleep(1 * time.Millisecond)
 					continue
 				}
-				PrintMeta(fq.meta)
 				panic(err)
 			}
 			if len(p) >= 8 {

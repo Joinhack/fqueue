@@ -1,6 +1,5 @@
 package fqueue
 
-//Not support now
 import (
 	"errors"
 	"os"

@@ -15,7 +15,7 @@ func init() {
 	fpath = filepath.Join(os.TempDir(), "fq1_benchmark.data")
 	println(fpath)
 	os.Remove(fpath)
-	var fq *FQueue
+	var fq Queue
 	FileLimit = 1024*1024*256
 	if fq, err = NewFQueue(fpath); err != nil {
 		panic(err)
@@ -27,7 +27,7 @@ func BenchmarkPush(b *testing.B) {
 	b.N = 1000000
 	var err error
 	var p []byte
-	var fq *FQueue
+	var fq Queue
 
 	if fq, err = NewFQueue(fpath); err != nil {
 		panic(err)
@@ -59,7 +59,7 @@ func BenchmarkPop(b *testing.B) {
 	b.N = 1000000
 	var err error
 	var p []byte
-	var fq *FQueue
+	var fq Queue
 	if fq, err = NewFQueue(fpath); err != nil {
 		panic(err)
 	}
