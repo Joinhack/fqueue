@@ -2,47 +2,48 @@ package fqueue
 
 import (
 	"encoding/binary"
-	"hash/crc32"
-	"errors"
 	"fmt"
+	"hash/crc32"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
-	"path/filepath"
 	"unsafe"
 )
 
-var (
-	NoSpace     = errors.New("no space error")
-	QueueEmpty  = errors.New("queue is empty")
-	InvalidMeta = errors.New("invalid meta")
-	MustBeFile  = errors.New("must be file")
+const (
+	WRMask   = 0x1
+	RDMask   = 0x2
+	MetaMask = 0x4 //if set, the meta is already.
 )
 
 var (
 	magic                  = "JFQ"
 	metaStructSize uintptr = unsafe.Sizeof(meta{})
 	magicLen       int     = len(magic)
+	_metaMask              = ^MetaMask
+	metaUnmask     byte    = byte(_metaMask)
 
-	FileLimit = 1024 * 1024 * 50
-	ChunkSize = 1024 * 1024 * 512
+	FileLimit                          = 1024 * 1024 * 50
+	PrepareCall func(string, int, int) = simplePrepareCall()
+)
 
-	PrepareCall func(int, int) = func(limit, now int) {
-		if now == 4096 {
+func simplePrepareCall() func(string, int, int) {
+	var n time.Time
+	return func(path string, limit, now int) {
+		if now == 0 {
+			fmt.Println("preassignment queue file", path)
+			n = time.Now()
 			fmt.Print(".")
 		} else if now%(1024*1024*5) == 0 {
 			fmt.Print(".")
 		}
 		if now == limit {
 			fmt.Println("100%")
+			fmt.Println("finished, used time:", (time.Now().UnixNano()-n.UnixNano())/1000000, "ms")
 		}
 	}
-)
-
-const (
-	WRMask = 0x1
-	RDMask = 0x2
-)
+}
 
 type meta struct {
 	Mask         byte
@@ -70,16 +71,6 @@ type FQueue struct {
 	qMutex  *sync.Mutex
 }
 
-type ChunksQueue struct {
-	chunks    []*FQueue
-	readerIdx int
-	writerIdx int
-}
-
-func (q *FQueue) GetMeta() *meta {
-	return q.meta
-}
-
 func PrintMeta(m *meta) {
 	fmt.Println("File Contents:", m.Contents)
 	fmt.Println("Limit:", m.Limit)
@@ -103,17 +94,18 @@ func prepareQueueFile(path string, limit int) {
 	}
 	defer file.Close()
 	empty := make([]byte, 4096)
-	n := time.Now()
-	fmt.Println("prepared queue file")
+
+	if PrepareCall != nil {
+		PrepareCall(path, limit, 0)
+	}
 	for i := 0; i < limit; {
 		file.Write(empty)
 		i += len(empty)
 		//file queue prepared callback.
 		if PrepareCall != nil {
-			PrepareCall(limit, i)
+			PrepareCall(path, limit, i)
 		}
 	}
-	fmt.Println("prepared queue file, used time:", (time.Now().UnixNano()-n.UnixNano())/1000000, "ms")
 }
 
 func (q *FQueue) Push(p []byte) error {
@@ -134,14 +126,16 @@ func (q *FQueue) Push(p []byte) error {
 		(q.WriterOffset+needSpace >= q.ReaderOffset) {
 		return NoSpace
 	}
-
+	q.Mask &= metaUnmask
 	if int(q.WriterOffset+needSpace) >= q.Limit {
-		//if add the item will to exceed the bottom of file(the limit) and 
+		//if add the item will to exceed the bottom of file(the limit) and
 		//the free space is more than need space, rolling.
-		if q.ReaderOffset - MetaSize > needSpace {
+		if q.ReaderOffset-MetaSize > needSpace {
 			//rolling
 			q.WriterOffset = MetaSize
 		} else {
+			//set mask
+			q.Mask |= MetaMask
 			return NoSpace
 		}
 	}
@@ -159,6 +153,8 @@ func (q *FQueue) Push(p []byte) error {
 		q.Contents < q.Limit {
 		q.WriterBottom = q.WriterOffset
 	}
+
+	q.Mask |= MetaMask
 	//merge meta
 	*q.meta1 = *q.meta
 	return err
@@ -221,14 +217,14 @@ func newFQueue(path string, limit int, idx byte, group uint32) (fq *FQueue, err 
 			return
 		}
 		if st.Size() < MetaSize {
-			err = InvalidMeta
+			err = InvaildMeta
 			return
 		}
 		if err = q.loadMeta(path); err != nil {
 			return
 		}
 		if crc32.ChecksumIEEE([]byte(path)) != q.meta.Group {
-			err = InvalidMeta
+			err = InvaildMeta
 			return
 		}
 	}
@@ -276,13 +272,13 @@ func (q *FQueue) loadMeta(path string) error {
 		return err
 	}
 	if n != MetaSize {
-		return errors.New(fmt.Sprintf("hope read %d bytes, but read %d bytes.", MetaSize, n))
+		return InvaildReadn
 	}
 	//find the mmap size info in the meta.
 	readonlyMeta := metaMapper(uintptr(magicLen), metaSli)
 
 	if string(metaSli[:magicLen]) != magic {
-		return InvalidMeta
+		return InvaildMeta
 	}
 
 	//reset file.
@@ -294,13 +290,13 @@ func (q *FQueue) loadMeta(path string) error {
 		return err
 	}
 	if string(q.ptr[:magicLen]) != magic {
-		return InvalidMeta
+		return InvaildMeta
 	}
 	q.meta = metaMapper(uintptr(magicLen), q.ptr)
 	q.meta1 = metaMapper(uintptr(magicLen)+metaStructSize, q.ptr)
 
-	// if don't finished the meta backup, use the backup meta.
-	if *q.meta1 != *q.meta {
+	//if meta is not ready, use the backup meta.
+	if q.Mask & MetaMask == 0 {
 		*q.meta = *q.meta1
 	}
 	return nil
@@ -314,6 +310,8 @@ func (q *FQueue) Pop() (p []byte, err error) {
 		err = QueueEmpty
 		return
 	}
+
+	q.Mask &= metaUnmask
 
 	//when the reader offset reach the bottom, rolling the reader offset and
 	//set the bottom to the writer offset.
@@ -335,7 +333,8 @@ func (q *FQueue) Pop() (p []byte, err error) {
 
 	//calc the content in fqueue
 	q.Contents -= int(2 + l)
-	
+	q.Mask |= MetaMask
+
 	//merge meta
 	*q.meta1 = *q.meta
 	return
