@@ -13,11 +13,11 @@ import (
 
 const (
 	WRMask     = 0x1
-	WRUnMask   = WRMask & 0xff
+	WRUnMask   = ^WRMask & 0xff
 	RDMask     = 0x2
-	RDUnMask   = RDMask & 0xff
+	RDUnMask   = ^RDMask & 0xff
 	MetaMask   = 0x4 //if set, the meta is already.
-	MetaUnMask = MetaMask & 0xff
+	MetaUnMask = ^MetaMask & 0xff
 )
 
 var (
