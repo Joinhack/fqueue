@@ -3,7 +3,6 @@ package fqueue
 import (
 	"encoding/binary"
 	"fmt"
-	"hash/crc32"
 	"os"
 	"path/filepath"
 	"sync"
@@ -12,11 +11,7 @@ import (
 )
 
 const (
-	WRMask     = 0x1
-	WRUnMask   = ^WRMask & 0xff
-	RDMask     = 0x2
-	RDUnMask   = ^RDMask & 0xff
-	MetaMask   = 0x4 //if set, the meta is already.
+	MetaMask   = 0x1 //if set, the meta is already.
 	MetaUnMask = ^MetaMask & 0xff
 )
 
@@ -25,7 +20,7 @@ var (
 	metaStructSize uintptr = unsafe.Sizeof(meta{})
 	magicLen       int     = len(magic)
 
-	FileLimit                          = 1024 * 1024 * 50
+	QueueLimit                         = 1024 * 1024 * 50
 	PrepareCall func(string, int, int) = simplePrepareCall()
 )
 
@@ -48,8 +43,7 @@ func simplePrepareCall() func(string, int, int) {
 
 type meta struct {
 	Mask         byte
-	Idx          byte
-	Group        uint32
+	Idx          int
 	WriterOffset int
 	ReaderOffset int
 	WriterBottom int
@@ -142,10 +136,8 @@ func (q *FQueue) Push(p []byte) error {
 	}
 	binary.LittleEndian.PutUint16(q.ptr[q.WriterOffset:], uint16(plen))
 	copy(q.ptr[q.WriterOffset+2:], p)
-	//set write mask
-	q.Mask |= WRMask
 	//set contents
-	q.Contents += (needSpace)
+	q.Contents += needSpace
 	//set writer offset
 	q.WriterOffset += needSpace
 	//set bottom.
@@ -169,13 +161,14 @@ func metaMapper(offset uintptr, ptr []byte) *meta {
 	return (*meta)(unsafe.Pointer(h.ptr + offset))
 }
 
-func newFQueue(path string, limit int, idx byte, group uint32) (fq *FQueue, err error) {
-	//PageSize * n should be limit
+func getAlign(limit int) int {
 	if limit%PageSize != 0 {
 		limit = (limit/PageSize)*PageSize + PageSize
 	}
+	return limit + MetaSize
+}
 
-	fileLimit := limit + MetaSize
+func newFQueue(path string, fileLimit int) (fq *FQueue, err error) {
 
 	q := &FQueue{
 		qMutex:  &sync.Mutex{},
@@ -198,11 +191,9 @@ func newFQueue(path string, limit int, idx byte, group uint32) (fq *FQueue, err 
 			q.meta1 = metaMapper(uintptr(magicLen)+metaStructSize, q.ptr)
 			q.Limit = fileLimit
 			q.Contents = 0
-			q.meta.Idx = idx
 			q.meta.ReaderOffset = MetaSize
 			q.meta.WriterOffset = MetaSize
 			q.meta.WriterBottom = q.meta.WriterOffset
-			q.meta.Group = group
 			//merge meta
 			*q.meta1 = *q.meta
 			copy(q.ptr, []byte(magic))
@@ -224,10 +215,6 @@ func newFQueue(path string, limit int, idx byte, group uint32) (fq *FQueue, err 
 		if err = q.loadMeta(path); err != nil {
 			return
 		}
-		if crc32.ChecksumIEEE([]byte(path)) != q.meta.Group {
-			err = InvaildMeta
-			return
-		}
 	}
 	fq = q
 	return
@@ -239,7 +226,7 @@ func NewFQueue(path string) (fq Queue, err error) {
 		return
 	}
 	absPath = filepath.ToSlash(absPath)
-	return newFQueue(absPath, FileLimit, 0, crc32.ChecksumIEEE([]byte(absPath)))
+	return newFQueue(absPath, getAlign(QueueLimit))
 }
 
 func (q *FQueue) Close() error {
@@ -261,34 +248,41 @@ func (q *FQueue) Close() error {
 	return nil
 }
 
-func (q *FQueue) loadMeta(path string) error {
-	var err error
+func (q *FQueue) loadMeta(path string) (err error) {
 	var n int
 	q.fd, err = os.OpenFile(path, os.O_RDWR, 0644)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err != nil {
+			q.fd.Close()
+			q.fd = nil
+		}
+	}()
 	metaSli := make([]byte, MetaSize)
 	if n, err = q.fd.Read(metaSli); err != nil {
-		return err
+		return
 	}
 	if n != MetaSize {
-		return InvaildReadn
+		err = InvaildReadn
+		return
 	}
 	//find the mmap size info in the meta.
 	readonlyMeta := metaMapper(uintptr(magicLen), metaSli)
 
 	if string(metaSli[:magicLen]) != magic {
-		return InvaildMeta
+		err = InvaildMeta
+		return
 	}
 
 	//reset file.
 	if _, err = q.fd.Seek(0, os.SEEK_SET); err != nil {
-		return err
+		return
 	}
 	q.ptr, err = mmap(q.fd.Fd(), 0, readonlyMeta.Limit, RDWR)
 	if err != nil {
-		return err
+		return
 	}
 	if string(q.ptr[:magicLen]) != magic {
 		return InvaildMeta
@@ -325,9 +319,6 @@ func (q *FQueue) Pop() (p []byte, err error) {
 	l = binary.LittleEndian.Uint16(q.ptr[q.ReaderOffset:])
 	p = make([]byte, l)
 	copy(p, q.ptr[q.ReaderOffset+2:])
-
-	//set current fqueue is reading
-	q.Mask |= RDMask
 
 	//set the reader offset
 	q.ReaderOffset += int(2 + l)
