@@ -12,17 +12,18 @@ import (
 )
 
 const (
-	WRMask   = 0x1
-	RDMask   = 0x2
-	MetaMask = 0x4 //if set, the meta is already.
+	WRMask     = 0x1
+	WRUnMask   = WRMask & 0xff
+	RDMask     = 0x2
+	RDUnMask   = RDMask & 0xff
+	MetaMask   = 0x4 //if set, the meta is already.
+	MetaUnMask = MetaMask & 0xff
 )
 
 var (
 	magic                  = "JFQ"
 	metaStructSize uintptr = unsafe.Sizeof(meta{})
 	magicLen       int     = len(magic)
-	_metaMask              = ^MetaMask
-	metaUnmask     byte    = byte(_metaMask)
 
 	FileLimit                          = 1024 * 1024 * 50
 	PrepareCall func(string, int, int) = simplePrepareCall()
@@ -126,7 +127,7 @@ func (q *FQueue) Push(p []byte) error {
 		(q.WriterOffset+needSpace >= q.ReaderOffset) {
 		return NoSpace
 	}
-	q.Mask &= metaUnmask
+	q.Mask &= MetaUnMask
 	if int(q.WriterOffset+needSpace) >= q.Limit {
 		//if add the item will to exceed the bottom of file(the limit) and
 		//the free space is more than need space, rolling.
@@ -296,7 +297,7 @@ func (q *FQueue) loadMeta(path string) error {
 	q.meta1 = metaMapper(uintptr(magicLen)+metaStructSize, q.ptr)
 
 	//if meta is not ready, use the backup meta.
-	if q.Mask & MetaMask == 0 {
+	if q.Mask&MetaMask == 0 {
 		*q.meta = *q.meta1
 	}
 	return nil
@@ -311,7 +312,7 @@ func (q *FQueue) Pop() (p []byte, err error) {
 		return
 	}
 
-	q.Mask &= metaUnmask
+	q.Mask &= MetaUnMask
 
 	//when the reader offset reach the bottom, rolling the reader offset and
 	//set the bottom to the writer offset.
