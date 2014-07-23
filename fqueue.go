@@ -32,7 +32,7 @@ func simplePrepareCall() func(string, int, int) {
 	var n time.Time
 	return func(path string, limit, now int) {
 		if now == 0 {
-			fmt.Println("preassignment queue file", path)
+			fmt.Println("preparing [", path, "]")
 			n = time.Now()
 			fmt.Print(".")
 		} else if now%(1024*1024*5) == 0 {
