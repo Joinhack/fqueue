@@ -184,7 +184,7 @@ func newFQueue(path string, fileLimit int) (fq *FQueue, err error) {
 			err = InvaildMeta
 			return
 		}
-		if err = q.loadMeta(path); err != nil {
+		if err = q.loadMeta(path, st); err != nil {
 			return
 		}
 	}
@@ -220,7 +220,7 @@ func (q *FQueue) Close() error {
 	return nil
 }
 
-func (q *FQueue) loadMeta(path string) (err error) {
+func (q *FQueue) loadMeta(path string, st os.FileInfo) (err error) {
 	var n int
 	q.fd, err = os.OpenFile(path, os.O_RDWR, 0644)
 	if err != nil {
@@ -252,7 +252,12 @@ func (q *FQueue) loadMeta(path string) (err error) {
 	if _, err = q.fd.Seek(0, os.SEEK_SET); err != nil {
 		return
 	}
-	if err = q.fd.Truncate(int64(readonlyMeta.Limit)); err != nil {
+	if st.Size() < int64(readonlyMeta.Limit) {
+		if err = q.fd.Truncate(int64(readonlyMeta.Limit)); err != nil {
+			return
+		}
+	} else if st.Size() > int64(readonlyMeta.Limit) {
+		err = InvaildFileSize
 		return
 	}
 	q.ptr, err = mmap(q.fd.Fd(), 0, readonlyMeta.Limit, RDWR)
