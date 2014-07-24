@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 	"unsafe"
 )
 
@@ -20,26 +19,8 @@ var (
 	metaStructSize uintptr = unsafe.Sizeof(meta{})
 	magicLen       int     = len(magic)
 
-	QueueLimit                         = 1024 * 1024 * 50
-	PrepareCall func(string, int, int) = simplePrepareCall()
+	QueueLimit = 1024 * 1024 * 50
 )
-
-func simplePrepareCall() func(string, int, int) {
-	var n time.Time
-	return func(path string, limit, now int) {
-		if now == 0 {
-			fmt.Println("preparing [", path, "]")
-			n = time.Now()
-			fmt.Print(".")
-		} else if now%(1024*1024*5) == 0 {
-			fmt.Print(".")
-		}
-		if now == limit {
-			fmt.Println("100%")
-			fmt.Println("finished, used time:", (time.Now().UnixNano()-n.UnixNano())/1000000, "ms")
-		}
-	}
-}
 
 type meta struct {
 	Mask         byte
@@ -83,23 +64,8 @@ func (q *FQueue) PrintMeta() {
 }
 
 func prepareQueueFile(path string, limit int) {
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
-	if err != nil {
+	if err := os.Truncate(path, int64(limit)); err != nil {
 		panic(err)
-	}
-	defer file.Close()
-	empty := make([]byte, 4096)
-
-	if PrepareCall != nil {
-		PrepareCall(path, limit, 0)
-	}
-	for i := 0; i < limit; {
-		file.Write(empty)
-		i += len(empty)
-		//file queue prepared callback.
-		if PrepareCall != nil {
-			PrepareCall(path, limit, i)
-		}
 	}
 }
 
@@ -174,13 +140,19 @@ func newFQueue(path string, fileLimit int) (fq *FQueue, err error) {
 		qMutex:  &sync.Mutex{},
 		running: true,
 	}
-
+	defer func() {
+		if err != nil && q.fd != nil {
+			q.fd.Close()
+		}
+	}()
 	var st os.FileInfo
 	if st, err = os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
-			prepareQueueFile(path, fileLimit)
 			q.fd, err = os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
 			if err != nil {
+				return
+			}
+			if err = q.fd.Truncate(int64(fileLimit)); err != nil {
 				return
 			}
 			q.ptr, err = mmap(q.fd.Fd(), 0, fileLimit, RDWR)
@@ -278,6 +250,9 @@ func (q *FQueue) loadMeta(path string) (err error) {
 
 	//reset file.
 	if _, err = q.fd.Seek(0, os.SEEK_SET); err != nil {
+		return
+	}
+	if err = q.fd.Truncate(int64(readonlyMeta.Limit)); err != nil {
 		return
 	}
 	q.ptr, err = mmap(q.fd.Fd(), 0, readonlyMeta.Limit, RDWR)

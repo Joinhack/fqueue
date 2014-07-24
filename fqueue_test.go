@@ -13,7 +13,7 @@ import (
 func TestFQueue(t *testing.T) {
 	var fq Queue
 	var err error
-	FileLimit = PageSize * 2
+	QueueLimit = PageSize * 2
 	fpath := filepath.Join(os.TempDir(), "fq1.data")
 	os.Remove(fpath)
 	

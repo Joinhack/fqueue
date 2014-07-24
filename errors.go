@@ -8,6 +8,7 @@ var (
 	NoSpace         = errors.New("no space error")
 	QueueEmpty      = errors.New("queue is empty")
 	InvaildMeta     = errors.New("invaild meta")
+	InvaildChunk    = errors.New("invaild chunk")
 	MustBeFile      = errors.New("must be file")
 	MustBeDirectory = errors.New("must be directory")
 	InvaildReadn    = errors.New("invaild readn")
