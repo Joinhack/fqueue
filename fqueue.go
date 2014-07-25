@@ -108,12 +108,13 @@ func (q *FQueue) Push(p []byte) error {
 	if plen == 0 {
 		return nil
 	}
+	var needSpace = plen + 2
 	var err error
 	q.qMutex.Lock()
 	defer q.qMutex.Unlock()
-
-	var needSpace = plen + 2
-
+	if !q.running {
+		return ClosedQueue
+	}
 	if needSpace+int(q.Contents) > int(q.Limit-MetaSize) {
 		return NoSpace
 	}
@@ -232,6 +233,7 @@ func NewFQueue(path string) (fq Queue, err error) {
 func (q *FQueue) Close() {
 	q.qMutex.Lock()
 	defer q.qMutex.Unlock()
+	q.running = false
 	if q.meta1 != nil && q.meta != nil {
 		//merge meta
 		*q.meta1 = *q.meta
@@ -297,6 +299,9 @@ func (q *FQueue) Pop() (p []byte, err error) {
 	q.qMutex.Lock()
 	defer q.qMutex.Unlock()
 	var l uint16
+	if !q.running {
+		return ClosedQueue
+	}
 	if q.Contents == 0 {
 		err = QueueEmpty
 		return
