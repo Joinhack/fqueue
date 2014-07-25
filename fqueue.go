@@ -15,7 +15,6 @@ const (
 	MetaUnMask = ^MetaMask & 0xff
 )
 
-
 var (
 	magic                  = "JFQ"
 	metaStructSize uintptr = unsafe.Sizeof(meta{})
@@ -55,7 +54,7 @@ type meta struct {
 type Queue interface {
 	Push([]byte) error
 	Pop() ([]byte, error)
-	Close() error
+	Close()
 }
 
 type FQueue struct {
@@ -230,23 +229,19 @@ func NewFQueue(path string) (fq Queue, err error) {
 	return newFQueue(absPath, getAlign(QueueLimit))
 }
 
-func (q *FQueue) Close() error {
+func (q *FQueue) Close() {
 	q.qMutex.Lock()
 	defer q.qMutex.Unlock()
-
-	//merge meta
-	*q.meta1 = *q.meta
-
+	if q.meta1 != nil && q.meta != nil {
+		//merge meta
+		*q.meta1 = *q.meta
+	}
 	if len(q.ptr) > 0 {
-		if err := unmap(q.ptr); err != nil {
-			return err
-		}
+		unmap(q.ptr)
 	}
-	q.fd.Sync()
-	if err := q.fd.Close(); err != nil {
-		return err
+	if q.fd != nil {
+		q.fd.Close()
 	}
-	return nil
 }
 
 func (q *FQueue) loadMeta(path string) (err error) {
