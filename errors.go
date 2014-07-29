@@ -13,4 +13,5 @@ var (
 	MustBeFile      = errors.New("must be file")
 	MustBeDirectory = errors.New("must be directory")
 	InvaildReadn    = errors.New("invaild readn")
+	ClosedQueue     = errors.New("queue is closed")
 )

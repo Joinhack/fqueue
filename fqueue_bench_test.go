@@ -10,24 +10,16 @@ import (
 
 var fpath string
 
-func init() {
-	var err error
-	fpath = filepath.Join(os.TempDir(), "fq1_benchmark.data")
-	os.Remove(fpath)
-	var fq Queue
-	QueueLimit = 1024*1024*256
-	if fq, err = NewFQueue(fpath); err != nil {
-		panic(err)
-	}
-	fq.Close()
-}
 
 func BenchmarkPush(b *testing.B) {
 	b.N = 1000000
 	var err error
 	var p []byte
 	var fq Queue
-
+	fpath = filepath.Join(os.TempDir(), "fq1_benchmark.data")
+	os.Remove(fpath)
+	QueueLimit = 1024*1024*256
+	
 	if fq, err = NewFQueue(fpath); err != nil {
 		panic(err)
 	}

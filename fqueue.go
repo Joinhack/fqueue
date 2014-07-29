@@ -3,11 +3,18 @@ package fqueue
 import (
 	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 	"unsafe"
+)
+
+const (
+	K = 1024
+	M = 1024 * K
+	G = 1024 * M
 )
 
 const (
@@ -20,7 +27,7 @@ var (
 	metaStructSize uintptr = unsafe.Sizeof(meta{})
 	magicLen       int     = len(magic)
 
-	QueueLimit                         = 1024 * 1024 * 50
+	QueueLimit                         = 50 * M
 	PrepareCall func(string, int, int) = simplePrepareCall()
 )
 
@@ -31,7 +38,7 @@ func simplePrepareCall() func(string, int, int) {
 			fmt.Println("preparing [", path, "]")
 			n = time.Now()
 			fmt.Print(".")
-		} else if now%(1024*1024*5) == 0 {
+		} else if now%(5*M) == 0 {
 			fmt.Print(".")
 		}
 		if now == limit {
@@ -43,7 +50,7 @@ func simplePrepareCall() func(string, int, int) {
 
 type meta struct {
 	Mask         byte
-	Idx          int
+	Id           uint64
 	WriterOffset int
 	ReaderOffset int
 	WriterBottom int
@@ -103,6 +110,27 @@ func prepareQueueFile(path string, limit int) {
 	}
 }
 
+func (q *FQueue) setID(id uint64) {
+	q.qMutex.Lock()
+	defer q.qMutex.Unlock()
+	q.Mask &= MetaUnMask
+	q.Id = id
+	q.Mask |= MetaMask
+	*q.meta1 = *q.meta
+}
+
+func (q *FQueue) reset(id uint64) {
+	q.qMutex.Lock()
+	defer q.qMutex.Unlock()
+	q.Mask &= MetaUnMask
+	q.meta.ReaderOffset = MetaSize
+	q.meta.WriterOffset = MetaSize
+	q.meta.Id = id
+	q.meta.WriterBottom = q.meta.WriterOffset
+	q.Mask |= MetaMask
+	*q.meta1 = *q.meta
+}
+
 func (q *FQueue) Push(p []byte) error {
 	var plen = len(p)
 	if plen == 0 {
@@ -115,7 +143,7 @@ func (q *FQueue) Push(p []byte) error {
 	if !q.running {
 		return ClosedQueue
 	}
-	if needSpace+int(q.Contents) > int(q.Limit-MetaSize) {
+	if needSpace+q.Contents > q.Limit-MetaSize {
 		return NoSpace
 	}
 	if (q.WriterOffset < q.WriterBottom) &&
@@ -123,7 +151,7 @@ func (q *FQueue) Push(p []byte) error {
 		return NoSpace
 	}
 	q.Mask &= MetaUnMask
-	if int(q.WriterOffset+needSpace) >= q.Limit {
+	if q.WriterOffset+needSpace >= q.Limit {
 		//if add the item will to exceed the bottom of file(the limit) and
 		//the free space is more than need space, rolling.
 		if q.ReaderOffset-MetaSize > needSpace {
@@ -169,7 +197,7 @@ func getAlign(limit int) int {
 	return limit + MetaSize
 }
 
-func newFQueue(path string, fileLimit int) (fq *FQueue, err error) {
+func newFQueue(path string, id uint64, fileLimit int) (fq *FQueue, err error) {
 
 	q := &FQueue{
 		qMutex:  &sync.Mutex{},
@@ -192,6 +220,7 @@ func newFQueue(path string, fileLimit int) (fq *FQueue, err error) {
 			q.meta1 = metaMapper(uintptr(magicLen)+metaStructSize, q.ptr)
 			q.Limit = fileLimit
 			q.Contents = 0
+			q.Id = id
 			q.meta.ReaderOffset = MetaSize
 			q.meta.WriterOffset = MetaSize
 			q.meta.WriterBottom = q.meta.WriterOffset
@@ -213,7 +242,7 @@ func newFQueue(path string, fileLimit int) (fq *FQueue, err error) {
 			err = InvaildMeta
 			return
 		}
-		if err = q.loadMeta(path); err != nil {
+		if err = q.loadMeta(path, id); err != nil {
 			return
 		}
 	}
@@ -221,13 +250,13 @@ func newFQueue(path string, fileLimit int) (fq *FQueue, err error) {
 	return
 }
 
-func NewFQueue(path string) (fq Queue, err error) {
+func NewFQueue(path string) (fq *FQueue, err error) {
 	var absPath string
 	if absPath, err = filepath.Abs(path); err != nil {
 		return
 	}
 	absPath = filepath.ToSlash(absPath)
-	return newFQueue(absPath, getAlign(QueueLimit))
+	return newFQueue(absPath, uint64(crc32.ChecksumIEEE([]byte(absPath))), getAlign(QueueLimit))
 }
 
 func (q *FQueue) Close() {
@@ -246,8 +275,33 @@ func (q *FQueue) Close() {
 	}
 }
 
-func (q *FQueue) loadMeta(path string) (err error) {
+func getReadOnlyMeta(fd *os.File) (meta *meta, err error) {
 	var n int
+	metaSli := make([]byte, MetaSize)
+	if n, err = fd.Read(metaSli); err != nil {
+		return
+	}
+	if n != MetaSize {
+		err = InvaildReadn
+		return
+	}
+	//find the mmap size info in the meta.
+	readonlyMeta1 := metaMapper(uintptr(magicLen), metaSli)
+	readonlyMeta2 := metaMapper(uintptr(magicLen)+metaStructSize, metaSli)
+
+	if string(metaSli[:magicLen]) != magic {
+		err = InvaildMeta
+		return
+	}
+	if readonlyMeta1.Mask&MetaMask == 0 {
+		meta = readonlyMeta2
+	} else {
+		meta = readonlyMeta1
+	}
+	return
+}
+
+func (q *FQueue) loadMeta(path string, id uint64) (err error) {
 	q.fd, err = os.OpenFile(path, os.O_RDWR, 0644)
 	if err != nil {
 		return err
@@ -258,22 +312,15 @@ func (q *FQueue) loadMeta(path string) (err error) {
 			q.fd = nil
 		}
 	}()
-	metaSli := make([]byte, MetaSize)
-	if n, err = q.fd.Read(metaSli); err != nil {
+	var readonlyMeta *meta
+	if readonlyMeta, err = getReadOnlyMeta(q.fd); err != nil {
 		return
 	}
-	if n != MetaSize {
-		err = InvaildReadn
-		return
-	}
-	//find the mmap size info in the meta.
-	readonlyMeta := metaMapper(uintptr(magicLen), metaSli)
 
-	if string(metaSli[:magicLen]) != magic {
+	if readonlyMeta.Id != id {
 		err = InvaildMeta
 		return
 	}
-
 	//reset file.
 	if _, err = q.fd.Seek(0, os.SEEK_SET); err != nil {
 		return
@@ -281,9 +328,6 @@ func (q *FQueue) loadMeta(path string) (err error) {
 	q.ptr, err = mmap(q.fd.Fd(), 0, readonlyMeta.Limit, RDWR)
 	if err != nil {
 		return
-	}
-	if string(q.ptr[:magicLen]) != magic {
-		return InvaildMeta
 	}
 	q.meta = metaMapper(uintptr(magicLen), q.ptr)
 	q.meta1 = metaMapper(uintptr(magicLen)+metaStructSize, q.ptr)
@@ -300,7 +344,8 @@ func (q *FQueue) Pop() (p []byte, err error) {
 	defer q.qMutex.Unlock()
 	var l uint16
 	if !q.running {
-		return ClosedQueue
+		err = ClosedQueue
+		return
 	}
 	if q.Contents == 0 {
 		err = QueueEmpty
