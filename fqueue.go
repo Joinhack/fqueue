@@ -266,16 +266,20 @@ func (q *FQueue) Close() {
 	if q.meta1 != nil && q.meta != nil {
 		//merge meta
 		*q.meta1 = *q.meta
+		q.meta1 = nil
+		q.meta = nil
 	}
 	if len(q.ptr) > 0 {
 		unmap(q.ptr)
+		q.ptr = []byte{}
 	}
 	if q.fd != nil {
 		q.fd.Close()
+		q.fd = nil
 	}
 }
 
-func getReadOnlyMeta(fd *os.File) (meta *meta, err error) {
+func getReadOnlyMeta(fd *os.File) (m *meta, err error) {
 	var n int
 	metaSli := make([]byte, MetaSize)
 	if n, err = fd.Read(metaSli); err != nil {
@@ -293,10 +297,13 @@ func getReadOnlyMeta(fd *os.File) (meta *meta, err error) {
 		err = InvaildMeta
 		return
 	}
+	//alloc a meta.
+	var tmp meta
+	m = &tmp
 	if readonlyMeta1.Mask&MetaMask == 0 {
-		meta = readonlyMeta2
+		tmp = *readonlyMeta2
 	} else {
-		meta = readonlyMeta1
+		tmp = *readonlyMeta1
 	}
 	return
 }
