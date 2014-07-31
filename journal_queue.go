@@ -172,6 +172,13 @@ func dirCheck(path string) (err error) {
 	return
 }
 
+func processInvaildFile(p string) {
+	//remove the unknow meta file
+	if err := os.Remove(p); err != nil {
+		panic(err)
+	}
+}
+
 func newJournalQueue(path string) (jq *JournalQueue, err error) {
 	if err = dirCheck(path); err != nil {
 		return
@@ -191,6 +198,8 @@ func newJournalQueue(path string) (jq *JournalQueue, err error) {
 			return filepath.SkipDir
 		}
 		if info.Size() < MetaSize || info.Size()%MetaSize != 0 {
+			//not reading empty file should removed.
+			processInvaildFile(p)
 			return nil
 		}
 
@@ -202,6 +211,8 @@ func newJournalQueue(path string) (jq *JournalQueue, err error) {
 		}
 		defer fd.Close()
 		if readOnlyMeta, err = getReadOnlyMeta(fd); err != nil {
+			//not reading empty file should removed.
+			processInvaildFile(p)
 			return nil
 		}
 		if readOnlyMeta.Id&highmask != dirPathCrc32<<32 {
