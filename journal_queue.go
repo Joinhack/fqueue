@@ -68,6 +68,39 @@ func (q *JournalQueue) tryPrepareEmptyJournal() {
 	}
 }
 
+func PrepareAllJournalFiles(p string) (err error) {
+	var absPath string
+	if absPath, err = filepath.Abs(p); err != nil {
+		return
+	}
+
+	absPath = filepath.ToSlash(absPath)
+	if err = dirCheck(absPath); err != nil {
+		return
+	}
+	dirPathCrc32 := uint64(crc32.ChecksumIEEE([]byte(absPath)))
+	for i := 2; i <= MaxJournalFiles; i++ {
+		filep := filepath.Join(absPath, fmt.Sprintf("%d.jat", i))
+		fsize := getAlign(JournalFileLimit)
+		prepareQueueFile(filep, fsize)
+		var file *os.File
+		if file, err = os.OpenFile(filep, os.O_RDWR, 0644); err != nil {
+			return
+		}
+		var p []byte
+		var m, m1 *meta
+		if m, m1, p, err = getMeta(file, fsize); err != nil {
+			return
+		}
+		m.Id = dirPathCrc32 << 32
+		//merge meta
+		*m1 = *m
+		copy(p, []byte(magic))
+		file.Close()
+	}
+	return nil
+}
+
 func (q *JournalQueue) Push(p []byte) (err error) {
 	var pq *FQueue
 TRY:
@@ -120,7 +153,7 @@ TRY:
 	return nil
 }
 
-func newJournalQueue(path string) (jq *JournalQueue, err error) {
+func dirCheck(path string) (err error) {
 	var st os.FileInfo
 	if st, err = os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
@@ -136,7 +169,13 @@ func newJournalQueue(path string) (jq *JournalQueue, err error) {
 			return
 		}
 	}
+	return
+}
 
+func newJournalQueue(path string) (jq *JournalQueue, err error) {
+	if err = dirCheck(path); err != nil {
+		return
+	}
 	dirPathCrc32 := uint64(crc32.ChecksumIEEE([]byte(path)))
 
 	var journalLimit int
@@ -281,7 +320,7 @@ TRY:
 			goto TRY
 		}
 		//if alread is same as push queue, there is no data, just return.
-		if len(q.journalQueues) == 0 && pq == q.pushQueue  {
+		if len(q.journalQueues) == 0 && pq == q.pushQueue {
 			q.mutex.Unlock()
 			return
 		}

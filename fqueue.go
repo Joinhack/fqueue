@@ -197,6 +197,21 @@ func getAlign(limit int) int {
 	return limit + MetaSize
 }
 
+func getMeta(fd *os.File, fileLimit int) (m, m1 *meta, p []byte, err error) {
+	p, err = mmap(fd.Fd(), 0, fileLimit, RDWR)
+	if err != nil {
+		return
+	}
+	m = metaMapper(uintptr(magicLen), p)
+	m1 = metaMapper(uintptr(magicLen)+metaStructSize, p)
+	m.Limit = fileLimit
+	m.Contents = 0
+	m.ReaderOffset = MetaSize
+	m.WriterOffset = MetaSize
+	m.WriterBottom = m.WriterOffset
+	return
+}
+
 func newFQueue(path string, id uint64, fileLimit int) (fq *FQueue, err error) {
 
 	q := &FQueue{
@@ -212,18 +227,10 @@ func newFQueue(path string, id uint64, fileLimit int) (fq *FQueue, err error) {
 			if err != nil {
 				return
 			}
-			q.ptr, err = mmap(q.fd.Fd(), 0, fileLimit, RDWR)
-			if err != nil {
+			if q.meta, q.meta1, q.ptr, err = getMeta(q.fd, fileLimit); err != nil {
 				return
 			}
-			q.meta = metaMapper(uintptr(magicLen), q.ptr)
-			q.meta1 = metaMapper(uintptr(magicLen)+metaStructSize, q.ptr)
-			q.Limit = fileLimit
-			q.Contents = 0
 			q.Id = id
-			q.meta.ReaderOffset = MetaSize
-			q.meta.WriterOffset = MetaSize
-			q.meta.WriterBottom = q.meta.WriterOffset
 			//merge meta
 			*q.meta1 = *q.meta
 			copy(q.ptr, []byte(magic))
@@ -323,7 +330,6 @@ func (q *FQueue) loadMeta(path string, id uint64) (err error) {
 	if readonlyMeta, err = getReadOnlyMeta(q.fd); err != nil {
 		return
 	}
-
 	if readonlyMeta.Id != id {
 		err = InvaildMeta
 		return
