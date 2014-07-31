@@ -37,7 +37,7 @@ type JournalQueue struct {
 type sortJournals []*FQueue
 
 func (sj sortJournals) Len() int           { return len(sj) }
-func (sj sortJournals) Less(i, j int) bool { return sj[i].Id&lowmask > sj[j].Id&lowmask }
+func (sj sortJournals) Less(i, j int) bool { return sj[i].Id&lowmask < sj[j].Id&lowmask }
 func (sj sortJournals) Swap(i, j int)      { sj[j], sj[i] = sj[i], sj[j] }
 
 func (q *JournalQueue) emptyJournalsJob() {
@@ -89,7 +89,7 @@ TRY:
 			goto TRY
 		}
 
-		if len(q.journalQueues) == MaxJournalFiles-1 {
+		if len(q.journalQueues) >= MaxJournalFiles-3 {
 			q.mutex.Unlock()
 			return
 		}
@@ -181,7 +181,6 @@ func newJournalQueue(path string) (jq *JournalQueue, err error) {
 			panic(err)
 		}
 		fq.running = true
-		println(p, readOnlyMeta.Id&lowmask)
 		if readOnlyMeta.Id&lowmask == 0 {
 			emptyJournals = append(emptyJournals, fq)
 		} else {
@@ -202,12 +201,13 @@ func newJournalQueue(path string) (jq *JournalQueue, err error) {
 		//sort by raise order
 		sort.Sort(sortJournals(journals))
 		//use the bigest id for push queue and use the lowest id for pop queue.
-		q.pushQueue = journals[0]
+		q.pushQueue = journals[len(journals)-1]
+		journals = journals[:len(journals)-1]
 		if len(journals) == 0 {
 			q.popQueue = q.pushQueue
 		} else {
-			q.popQueue = journals[len(journals)-1]
-			journals = journals[:len(journals)-1]
+			q.popQueue = journals[0]
+			journals = journals[1:]
 		}
 		q.seq = uint32(q.pushQueue.Id&lowmask) + 1
 	} else {
@@ -220,7 +220,6 @@ func newJournalQueue(path string) (jq *JournalQueue, err error) {
 	}
 	q.emptyJournals = emptyJournals
 	q.journalQueues = journals
-	println(len(emptyJournals))
 	q.running = true
 	q.tryPrepareEmptyJournal()
 	jq = q
@@ -282,7 +281,7 @@ TRY:
 			goto TRY
 		}
 		//if alread is same as push queue, there is no data, just return.
-		if pq == q.pushQueue {
+		if len(q.journalQueues) == 0 && pq == q.pushQueue  {
 			q.mutex.Unlock()
 			return
 		}

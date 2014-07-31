@@ -12,15 +12,18 @@ func TestPushPop(t *testing.T) {
 	var fpath = filepath.Join(os.TempDir(), "journalQueue1")
 	var jq *JournalQueue
 	var err error
-	MaxJournalFiles = 5
-	JournalFileLimit = 4096 * K
+	MaxJournalFiles = 10
+	JournalFileLimit = 2 * M
+	os.RemoveAll(fpath)
+	defer os.RemoveAll(fpath)
 	if jq, err = NewJournalQueue(fpath); err != nil {
 		t.Error(err)
 		t.FailNow()
 	}
 	var p []byte
 	ptr := make([]byte, 256 + 8)
-	for i := 0; i < 100000; i++ {
+	N := 100000
+	for i := 0; i < N; i++ {
 		l := rand.Intn(256) + 8
 		p = ptr[:l]
 		binary.LittleEndian.PutUint32(p, uint32(i))
@@ -30,7 +33,7 @@ func TestPushPop(t *testing.T) {
 			t.FailNow()
 		}
 	}
-	for i := 0; i < 100000; i++ {
+	for i := 0; i < N; i++ {
 		if p, err = jq.Pop(); err != nil {
 			if err == QueueEmpty {
 				break
