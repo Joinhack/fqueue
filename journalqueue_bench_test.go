@@ -45,6 +45,7 @@ func BenchmarkJournalQueuePush(b *testing.B) {
 			b.FailNow()
 		}
 	}
+	b.SetBytes(total/int64(b.N))
 	b.StopTimer()
 	
 }
@@ -74,5 +75,6 @@ func BenchmarkJournalQueuePop(b *testing.B) {
 			b.FailNow()
 		}
 	}
+	b.SetBytes(total/int64(b.N))
 	b.StopTimer()
 }

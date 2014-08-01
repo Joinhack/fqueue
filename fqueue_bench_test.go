@@ -44,6 +44,7 @@ func BenchmarkPush(b *testing.B) {
 			b.FailNow()
 		}
 	}
+	b.SetBytes(total/int64(b.N))
 	b.StopTimer()
 	
 }
@@ -73,5 +74,6 @@ func BenchmarkPop(b *testing.B) {
 			b.FailNow()
 		}
 	}
+	b.SetBytes(total/int64(b.N))
 	b.StopTimer()
 }
